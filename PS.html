@@ -1,0 +1,2277 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DV 影像編輯器 v8.0</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Courier New',monospace;background:#0b0c10;color:#c5c6c7;height:100vh;overflow:hidden;display:flex;flex-direction:column}
+
+  /* ── 頂部工具列 ── */
+  #topbar{display:flex;align-items:center;gap:8px;padding:6px 12px;background:#1f2833;border-bottom:1px solid #45a29e;flex-shrink:0;flex-wrap:wrap}
+  #topbar h1{font-size:13px;color:#66fcf1;text-shadow:0 0 6px #66fcf1;white-space:nowrap;margin-right:4px}
+  .sep{width:1px;height:20px;background:#45a29e;flex-shrink:0}
+  .tb-btn{background:transparent;color:#66fcf1;border:1px solid #45a29e;padding:3px 8px;font-size:11px;cursor:pointer;font-family:inherit;white-space:nowrap;transition:.15s}
+  .tb-btn:hover{background:#45a29e;color:#0b0c10}
+  .tb-btn.active{background:#66fcf1;color:#0b0c10;border-color:#66fcf1}
+  .tb-btn:disabled{opacity:.35;cursor:not-allowed}
+  #colorWrap{display:flex;align-items:center;gap:4px;font-size:11px}
+  #cur-color{width:28px;height:22px;padding:0;border:1px solid #45a29e;cursor:pointer;background:none}
+  #canvas-size-info{font-size:10px;color:#45a29e;margin-left:4px}
+  #autosave-badge{font-size:10px;color:#45a29e;margin-left:auto;white-space:nowrap}
+
+  /* ── 主體三欄 ── */
+  #workspace{display:flex;flex:1;overflow:hidden}
+
+  /* ── 左側面板 ── */
+  #left-panel{width:220px;flex-shrink:0;background:#161b22;border-right:1px solid #45a29e;display:flex;flex-direction:column;overflow:hidden}
+  .panel-title{font-size:10px;color:#66fcf1;padding:5px 8px;background:rgba(0,0,0,.4);border-bottom:1px solid #2a3a4a;letter-spacing:.5px}
+  .panel-section{padding:8px;border-bottom:1px solid #1a2535}
+
+  /* 新增圖層按鈕群 */
+  .add-layer-btns{display:flex;gap:4px;flex-wrap:wrap}
+  .al-btn{flex:1;min-width:55px;font-size:10px;padding:4px 2px;background:#1f2833;color:#66fcf1;border:1px solid #45a29e;cursor:pointer;text-align:center;transition:.15s}
+  .al-btn:hover{background:#45a29e;color:#0b0c10}
+
+  /* ── 圖層列表 ── */
+  #layer-list-wrap{flex:1;overflow-y:auto;padding:4px}
+  #layer-list-wrap::-webkit-scrollbar{width:4px}
+  #layer-list-wrap::-webkit-scrollbar-thumb{background:#45a29e}
+  .layer-item{display:flex;align-items:center;gap:3px;padding:4px 5px;margin-bottom:3px;background:#0d1117;border:1px solid #2a3a4a;font-size:10px;cursor:pointer;transition:.15s;user-select:none}
+  .layer-item:hover{border-color:#45a29e}
+  .layer-item.active{border-color:#66fcf1;background:#111c2b;color:#66fcf1}
+  .layer-item.child{margin-left:14px;border-left:3px solid #b026ff}
+  .layer-item.group-type{border-color:#b026ff}
+  .layer-thumb{width:26px;height:20px;object-fit:cover;border:1px solid #2a3a4a;flex-shrink:0;background:#000}
+  .layer-name{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .l-icon{font-size:10px;flex-shrink:0}
+  .sm-btn{background:transparent;color:#66fcf1;border:1px solid #2a3a4a;font-size:9px;padding:1px 3px;cursor:pointer;flex-shrink:0}
+  .sm-btn:hover{background:#45a29e;color:#0b0c10}
+  .sm-btn.on{background:#66fcf1;color:#0b0c10}
+
+  /* 混合模式與不透明度 */
+  select,input[type=number],input[type=text]{background:#0b0c10;color:#66fcf1;border:1px solid #45a29e;padding:3px 5px;font-size:11px;width:100%;font-family:inherit}
+  select:focus,input:focus{outline:none;border-color:#66fcf1}
+  input[type=range]{accent-color:#66fcf1;width:100%}
+  label{font-size:10px;color:#b026ff;display:block;margin-bottom:2px;margin-top:6px}
+  .row{display:flex;gap:5px;align-items:center}
+  .row label{margin:0;white-space:nowrap}
+
+  /* ── 中央畫布 ── */
+  #center{flex:1;display:flex;background:#242424;overflow:auto;position:relative}
+  #canvas-wrap{margin:auto;position:relative;flex-shrink:0;transform-origin:top left; box-shadow: 0 4px 20px rgba(0,0,0,0.6); outline: 1px solid #0b0c10;}
+  canvas#canvas{display:block;transform-origin:top left}
+  #remote-cursors{position:absolute;top:0;left:0;pointer-events:none}
+  #loading-overlay{display:none;position:absolute;inset:0;background:rgba(0,0,0,.75);color:#66fcf1;align-items:center;justify-content:center;font-size:13px;font-weight:bold;z-index:20;letter-spacing:1px}
+
+  /* ── 右側屬性面板 ── */
+  #right-panel{width:220px;flex-shrink:0;background:#161b22;border-left:1px solid #45a29e;display:flex;flex-direction:column;overflow-y:auto;padding:8px;gap:8px}
+  #right-panel::-webkit-scrollbar{width:4px}
+  #right-panel::-webkit-scrollbar-thumb{background:#45a29e}
+  .prop-box{background:rgba(0,0,0,.4);border:1px solid #2a3a4a;border-radius:3px;padding:8px}
+  .prop-box-title{font-size:10px;color:#66fcf1;margin-bottom:6px;border-bottom:1px solid #2a3a4a;padding-bottom:4px}
+
+  /* 筆刷預覽 */
+  #brush-preview-wrap{display:flex;align-items:center;justify-content:center;height:50px;background:#000;border:1px solid #2a3a4a;margin-top:4px}
+  #brush-preview{border-radius:50%;background:#66fcf1;transition:.1s}
+
+  /* 仿 PS 圖層面板頭部 */
+  .layer-panel-header { padding: 6px; background: #1f2833; border-bottom: 1px solid #2a3a4a; font-size: 11px; }
+  .lp-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .lp-select { background: #0b0c10; color: #66fcf1; border: 1px solid #45a29e; border-radius: 2px; padding: 2px; height: 18px; width: 85px; font-size: 10px; }
+  .lp-input { background: #0b0c10; color: #66fcf1; border: 1px solid #45a29e; border-radius: 2px; padding: 0 4px; width: 35px; text-align:right; font-size: 10px; height: 16px; margin-right: 2px; }
+  .lp-lock-group { display: flex; gap: 4px; align-items: center; }
+  .lp-lock-btn { background: transparent; border: 1px solid transparent; color: #45a29e; font-size: 12px; cursor: pointer; border-radius: 2px; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; }
+  .lp-lock-btn:hover { color: #66fcf1; border-color: #2a3a4a; }
+  .lp-lock-btn.on { color: #0b0c10; background: #45a29e; border-color: #45a29e; }
+
+  /* 狀態列 */
+  #statusbar{background:#1f2833;border-top:1px solid #45a29e;padding:3px 10px;font-size:10px;color:#45a29e;display:flex;gap:16px;flex-shrink:0}
+
+  /* 小工具 */
+  .hidden{display:none!important}
+  hr.sep-h{border:none;border-top:1px solid #2a3a4a;margin:6px 0}
+</style>
+</head>
+<body>
+
+<!-- ████████████ 頂部工具列 ████████████ -->
+<div id="topbar">
+  <h1>📷 DV Editor v8</h1>
+  <div class="sep"></div>
+
+  <!-- 工具模式 -->
+  <button class="tb-btn active" id="mode-move"   onclick="setMode('move')">✋ 移動</button>
+  <button class="tb-btn"        id="mode-select" onclick="setMode('select')" title="可拖曳矩形選取與裁剪">⚄ 選取</button>
+  <button class="tb-btn"        id="mode-wand"   onclick="setMode('wand')" title="點擊消除同色區域 (產生透明遮罩)">🪄 魔力擦</button>
+  <div class="sep"></div>
+  <button class="tb-btn"        id="mode-brush"  onclick="setMode('brush')">🖌 筆刷</button>
+  <button class="tb-btn"        id="mode-pencil" onclick="setMode('pencil')">✏️ 鉛筆</button>
+  <button class="tb-btn"        id="mode-bucket" onclick="setMode('bucket')">🪣 填色</button>
+  <button class="tb-btn"        id="mode-eraser" onclick="setMode('eraser')">◻ 橡皮</button>
+  <div class="sep"></div>
+  <button class="tb-btn"        id="mode-clone"  onclick="setMode('clone')" title="Alt+Click 取樣，然後拖曳塗蓋">🔵 仿製</button>
+  <button class="tb-btn"        id="mode-repair" onclick="setMode('repair')" title="塗抹浮水印區域，自動智慧修復">🩹 修復</button>
+  <button class="tb-btn"        id="mode-blur"   onclick="setMode('blur')" title="直接塗抹模糊背景">💧 模糊</button>
+  <div class="sep"></div>
+  <button class="tb-btn"        id="mode-pen"    onclick="setMode('pen')">🖋 鋼筆</button>
+  <button class="tb-btn"        id="mode-mask"   onclick="setMode('mask')">🌗 遮罩</button>
+  <button class="tb-btn"        id="mode-text"   onclick="setMode('text')">T 文字</button>
+  <button class="tb-btn"        id="mode-eyedrop" onclick="setMode('eyedrop')">💉 取色</button>
+
+  <div class="sep"></div>
+  <button class="tb-btn" onclick="undo()" id="btn-undo" disabled>↩</button>
+  <button class="tb-btn" onclick="redo()" id="btn-redo" disabled>↪</button>
+  <button class="tb-btn" onclick="clearPen()">✕路徑</button>
+  <button class="tb-btn" onclick="flattenAll()">⬇ 合併</button>
+
+  <div class="sep"></div>
+  <!-- 畫板尺寸 -->
+  <span style="font-size:10px;color:#b026ff">W:</span>
+  <input type="number" id="cnv-w" value="800" style="width:55px" onchange="resizeCanvas()">
+  <span style="font-size:10px;color:#b026ff">H:</span>
+  <input type="number" id="cnv-h" value="600" style="width:55px" onchange="resizeCanvas()">
+  <button class="tb-btn" onclick="fitToLayer()" title="將畫布對齊至目前選取的圖片圖層大小">⊡ 配合圖層</button>
+
+  <div class="sep"></div>
+  <div id="colorWrap">
+    <span style="font-size:10px;color:#b026ff">色:</span>
+    <input type="color" id="cur-color" value="#66fcf1">
+    <span style="font-size:10px;color:#b026ff">BG:</span>
+    <input type="color" id="bg-color" value="#1e1e1e" onchange="render()">
+  </div>
+
+  <div class="sep"></div>
+  <button class="tb-btn" onclick="openExportModal('png')">💾PNG</button>
+  <button class="tb-btn" onclick="openExportModal('jpg')">💾JPG</button>
+  <button class="tb-btn" onclick="openSplitModal()">✂ 分割圖片</button>
+  <button class="tb-btn" onclick="saveToIDB()">📦存檔</button>
+  <button class="tb-btn" onclick="loadFromIDB()">📂讀檔</button>
+  <span id="autosave-badge">●自動存檔: 關閉</span>
+</div>
+
+<!-- ████████████ 主體 ████████████ -->
+<div id="workspace">
+
+  <!-- 左側面板 -->
+  <div id="left-panel">
+    <div class="panel-title" style="display:flex; justify-content:space-between; padding:5px 8px;">
+      <span>Layers</span><span style="color:#45a29e;opacity:0.6">Channels</span><span style="color:#45a29e;opacity:0.6">Paths</span><span style="cursor:pointer;color:#45a29e">≡</span>
+    </div>
+
+    <!-- 仿 PS 圖層上方屬性列 -->
+    <div class="layer-panel-header">
+      <div class="lp-row">
+        <select id="p-blend-left" class="lp-select" onchange="updateActiveLayer('blend',this.value);render()">
+          <option value="source-over">Normal</option>
+          <option value="multiply">Multiply (色彩增值)</option>
+          <option value="screen">Screen (濾色)</option>
+          <option value="overlay">Overlay (覆疊)</option>
+          <option value="hard-light">Hard Light</option>
+          <option value="soft-light">Soft Light</option>
+          <option value="difference">Difference</option>
+          <option value="exclusion">Exclusion</option>
+          <option value="color-dodge">Color Dodge</option>
+          <option value="color-burn">Color Burn</option>
+          <option value="hue">Hue</option>
+          <option value="saturation">Saturation</option>
+          <option value="color">Color</option>
+          <option value="luminosity">Luminosity</option>
+        </select>
+        <span style="color:#c5c6c7">Opacity: <input type="number" id="p-opacity-num" class="lp-input" min="0" max="100" value="100" onchange="updateActiveLayer('opacity',this.value/100);const rr=document.getElementById('p-opacity');if(rr){rr.value=this.value;document.getElementById('p-op-val').textContent=this.value;}render()">%</span>
+      </div>
+      <div class="lp-row" style="margin-bottom:0">
+        <div class="lp-lock-group">
+          <span style="color:#c5c6c7;font-size:10px;margin-right:2px">Lock:</span>
+          <button id="btn-lock-alpha" class="lp-lock-btn" title="Lock transparent pixels" onclick="toggleLock('alpha')">▦</button>
+          <button id="btn-lock-image" class="lp-lock-btn" title="Lock image pixels" onclick="toggleLock('image')">🖌</button>
+          <button id="btn-lock-pos" class="lp-lock-btn" title="Lock position" onclick="toggleLock('pos')">☩</button>
+          <button id="btn-lock-all" class="lp-lock-btn" title="Lock all" onclick="toggleLock('all')">🔒</button>
+        </div>
+        <span style="color:#c5c6c7">Fill: <input type="number" id="p-fill-num" class="lp-input" min="0" max="100" value="100" onchange="updateActiveLayer('fill',this.value/100);render()">%</span>
+      </div>
+    </div>
+
+    <div class="panel-section" style="padding:4px">
+      <div class="add-layer-btns" style="gap:2px">
+        <input type="file" id="add-img-input" accept="image/*" multiple style="display:none">
+        <button class="al-btn" onclick="document.getElementById('add-img-input').click()">+Img</button>
+        <button class="al-btn" onclick="addTextLayer()">+Txt</button>
+        <button class="al-btn" onclick="addGroupLayer()">+Grp</button>
+        <button class="al-btn" onclick="addDrawLayer()">+Drw</button>
+        <button class="al-btn" onclick="addSolidLayer()">+Sld</button>
+      </div>
+    </div>
+
+    <div id="layer-list-wrap">
+      <div id="layer-list"></div>
+    </div>
+  </div>
+
+  <!-- 中央畫布 -->
+  <div id="center">
+    <div id="loading-overlay">⚙ Worker 運算中...</div>
+    <div id="canvas-wrap">
+      <canvas id="canvas"></canvas>
+    </div>
+  </div>
+
+  <!-- 右側屬性面板 -->
+  <div id="right-panel">
+
+    <!-- 筆刷設定 -->
+    <div class="prop-box" id="brush-settings">
+      <div class="prop-box-title">筆刷設定</div>
+      <label>大小: <span id="brush-size-val">20</span>px</label>
+      <input type="range" id="brush-size" min="1" max="200" value="20" oninput="updateBrushPreview()">
+      <label>硬度: <span id="brush-hard-val">80</span>%</label>
+      <input type="range" id="brush-hard" min="0" max="100" value="80" oninput="updateBrushPreview()">
+      <label>不透明: <span id="brush-op-val">100</span>%</label>
+      <input type="range" id="brush-op" min="1" max="100" value="100" oninput="updateBrushPreview()">
+      <div id="brush-preview-wrap"><div id="brush-preview"></div></div>
+    </div>
+
+    <!-- 鋼筆設定 -->
+    <div class="prop-box" id="pen-settings" class="hidden">
+      <div class="prop-box-title">鋼筆 / 路徑</div>
+      <label>線寬: <span id="pen-width-val">3</span>px</label>
+      <input type="range" id="pen-width" min="1" max="30" value="3" oninput="document.getElementById('pen-width-val').textContent=this.value">
+      <label>是否閉合路徑</label>
+      <div class="row" style="margin-top:4px">
+        <input type="checkbox" id="pen-close">
+        <span style="font-size:11px;margin-left:4px">閉合並填色</span>
+      </div>
+      <button class="al-btn" style="margin-top:6px;width:100%" onclick="commitPen()">✓ 寫入圖層</button>
+      <button class="al-btn" style="margin-top:3px;width:100%" onclick="clearPen()">✕ 清除節點</button>
+    </div>
+
+    <!-- 文字設定 -->
+    <div class="prop-box" id="text-settings">
+      <div class="prop-box-title">文字設定</div>
+      <label>內容</label>
+      <input type="text" id="p-text" value="DV LOOP" oninput="updateActiveLayer('text',this.value)">
+      <label>字體</label>
+      <select id="p-font" onchange="updateActiveLayer('fontFamily',this.value)">
+        <option>Courier New</option><option>Arial</option><option>Georgia</option>
+        <option>Impact</option><option>Verdana</option><option>monospace</option>
+      </select>
+      <label>大小: <span id="p-font-size-val">50</span>px</label>
+      <input type="range" id="p-font-size" min="8" max="300" value="50" oninput="updateActiveLayer('fontSize',+this.value);document.getElementById('p-font-size-val').textContent=this.value">
+      <label>字色</label>
+      <input type="color" id="p-text-color" value="#ffffff" style="width:100%;height:28px;margin-top:2px" onchange="updateActiveLayer('color',this.value)">
+      <div class="row" style="margin-top:6px">
+        <input type="checkbox" id="p-text-bold" onchange="updateActiveLayer('bold',this.checked)">
+        <span style="font-size:11px;margin-left:4px">粗體</span>
+        <input type="checkbox" id="p-text-italic" style="margin-left:8px" onchange="updateActiveLayer('italic',this.checked)">
+        <span style="font-size:11px;margin-left:4px">斜體</span>
+      </div>
+    </div>
+
+    <!-- 圖層屬性 -->
+    <div class="prop-box" id="layer-props">
+      <div class="prop-box-title">圖層屬性</div>
+
+      <label style="display:none">混合模式</label>
+      <select id="p-blend" onchange="updateActiveLayer('blend',this.value);if(document.getElementById('p-blend-left'))document.getElementById('p-blend-left').value=this.value;render()" style="display:none">
+
+      <label style="display:none">不透明度: <span id="p-op-val">100</span>%</label>
+      <input type="range" id="p-opacity" min="0" max="100" value="100" oninput="updateActiveLayer('opacity',this.value/100);document.getElementById('p-op-val').textContent=this.value;if(document.getElementById('p-opacity-num'))document.getElementById('p-opacity-num').value=this.value;render()" style="display:none">
+
+      <label>縮放: <span id="p-scale-val">100</span>%</label>
+      <input type="range" id="p-scale" min="5" max="500" value="100" oninput="updateActiveLayer('scale',+this.value);document.getElementById('p-scale-val').textContent=this.value;render()">
+
+      <label>旋轉: <span id="p-angle-val">0</span>°</label>
+      <input type="range" id="p-angle" min="-180" max="180" value="0" oninput="updateActiveLayer('angle',+this.value);document.getElementById('p-angle-val').textContent=this.value;render()">
+
+      <hr class="sep-h">
+      <div class="row" style="gap:4px;flex-wrap:wrap">
+        <button class="al-btn" style="font-size:9px" onclick="duplicateLayer()">複製</button>
+        <button class="al-btn" style="font-size:9px" onclick="mergeDown()">向下合併</button>
+        <button class="al-btn" style="font-size:9px;color:#ff6b6b;border-color:#ff6b6b" onclick="deleteActiveLayer()">刪除</button>
+      </div>
+    </div>
+
+    <!-- ★ 修圖調整面板 -->
+    <div class="prop-box" id="adj-panel">
+      <div class="prop-box-title">🎨 修圖調整 (即時預覽)</div>
+
+      <!-- 預設風格快速套用 -->
+      <div style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:6px">
+        <button class="al-btn" style="font-size:9px" onclick="applyPreset('vivid')">鮮豔</button>
+        <button class="al-btn" style="font-size:9px" onclick="applyPreset('matte')">霧感</button>
+        <button class="al-btn" style="font-size:9px" onclick="applyPreset('warm')">暖調</button>
+        <button class="al-btn" style="font-size:9px" onclick="applyPreset('cold')">冷調</button>
+        <button class="al-btn" style="font-size:9px" onclick="applyPreset('bw')">黑白</button>
+        <button class="al-btn" style="font-size:9px" onclick="applyPreset('fade')">褪色</button>
+        <button class="al-btn" style="font-size:9px;color:#ff6b6b;border-color:#ff6b6b" onclick="resetAdj()">重置</button>
+      </div>
+
+      <!-- 基本 -->
+      <div style="font-size:9px;color:#66fcf1;margin:4px 0 2px">── 基本 ──</div>
+      <label>曝光 EV: <span id="a-exp-v">0</span></label>
+      <input type="range" id="a-exp" min="-3" max="3" step="0.1" value="0" oninput="setAdj('exposure',+this.value,'a-exp-v');">
+
+      <label>對比: <span id="a-con-v">0</span></label>
+      <input type="range" id="a-con" min="-100" max="100" value="0" oninput="setAdj('contrast',+this.value,'a-con-v');">
+
+      <label>高光: <span id="a-hi-v">0</span></label>
+      <input type="range" id="a-hi" min="-100" max="100" value="0" oninput="setAdj('highlights',+this.value,'a-hi-v');">
+
+      <label>暗部: <span id="a-sh-v">0</span></label>
+      <input type="range" id="a-sh" min="-100" max="100" value="0" oninput="setAdj('shadows',+this.value,'a-sh-v');">
+
+      <label>亮部: <span id="a-wh-v">0</span></label>
+      <input type="range" id="a-wh" min="-100" max="100" value="0" oninput="setAdj('whites',+this.value,'a-wh-v');">
+
+      <label>陰影: <span id="a-bl-v">0</span></label>
+      <input type="range" id="a-bl" min="-100" max="100" value="0" oninput="setAdj('blacks',+this.value,'a-bl-v');">
+
+      <!-- 顏色 -->
+      <div style="font-size:9px;color:#66fcf1;margin:6px 0 2px">── 顏色 ──</div>
+      <label>色溫 (暖/冷): <span id="a-tmp-v">0</span></label>
+      <input type="range" id="a-tmp" min="-100" max="100" value="0" oninput="setAdj('temp',+this.value,'a-tmp-v');">
+
+      <label>色調 (綠/紫): <span id="a-tnt-v">0</span></label>
+      <input type="range" id="a-tnt" min="-100" max="100" value="0" oninput="setAdj('tint',+this.value,'a-tnt-v');">
+
+      <label>飽和度: <span id="a-sat-v">0</span></label>
+      <input type="range" id="a-sat" min="-100" max="100" value="0" oninput="setAdj('saturation',+this.value,'a-sat-v');">
+
+      <label>自然飽和度: <span id="a-vib-v">0</span></label>
+      <input type="range" id="a-vib" min="-100" max="100" value="0" oninput="setAdj('vibrance',+this.value,'a-vib-v');">
+
+      <!-- 效果 -->
+      <div style="font-size:9px;color:#66fcf1;margin:6px 0 2px">── 照片濾鏡 ──</div>
+      <label>濾鏡濃度: <span id="a-pf-v">0</span>%</label>
+      <div class="row">
+        <input type="color" id="a-pf-color" value="#ec8a00" onchange="setAdj('pfColor',this.value,'');">
+        <input type="range" id="a-pf-dens" min="0" max="100" value="0" oninput="setAdj('photoFilter',+this.value,'a-pf-v');">
+      </div>
+      <div style="font-size:9px;color:#66fcf1;margin:6px 0 2px">── 效果 ──</div>
+      <label>清晰度: <span id="a-cla-v">0</span></label>
+      <input type="range" id="a-cla" min="-100" max="100" value="0" oninput="setAdj('clarity',+this.value,'a-cla-v');">
+
+      <label>曝曬 (Dehaze): <span id="a-deh-v">0</span></label>
+      <input type="range" id="a-deh" min="-100" max="100" value="0" oninput="setAdj('dehaze',+this.value,'a-deh-v');">
+
+      <label>暈影: <span id="a-vig-v">0</span></label>
+      <input type="range" id="a-vig" min="-100" max="100" value="0" oninput="setAdj('vignette',+this.value,'a-vig-v');">
+
+      <hr class="sep-h">
+      <!-- 精確操作 (Worker) -->
+      <div style="font-size:9px;color:#66fcf1;margin:2px 0">── 精確套用 (Worker) ──</div>
+      <label>色階 Min / Max</label>
+      <div class="row">
+        <input type="number" id="lvl-min" value="0" min="0" max="254" style="width:48px">
+        <span style="font-size:9px">~</span>
+        <input type="number" id="lvl-max" value="255" min="1" max="255" style="width:48px">
+        <button class="al-btn" style="font-size:9px" onclick="applyLevels()">套用</button>
+      </div>
+      <label>模糊半徑</label>
+      <div class="row">
+        <input type="number" id="adj-blur" value="3" min="1" max="50" style="width:48px">
+        <button class="al-btn" style="font-size:9px" onclick="applyBlur()">套用</button>
+      </div>
+    </div>
+
+    <!-- 遮罩工具 -->
+    <div class="prop-box">
+      <div class="prop-box-title">🌗 遮罩 (Layer Mask)</div>
+      <div class="row" style="gap:4px;flex-wrap:wrap">
+        <button class="al-btn" style="font-size:9px" onclick="addMask()">新增遮罩</button>
+        <button class="al-btn" style="font-size:9px" onclick="applyMask()">套用遮罩</button>
+        <button class="al-btn" style="font-size:9px;color:#ff6b6b;border-color:#ff6b6b" onclick="deleteMask()">刪除遮罩</button>
+      </div>
+      <div class="row" style="margin-top:4px">
+        <input type="checkbox" id="mask-invert" onchange="render()">
+        <span style="font-size:11px;margin-left:4px">反轉遮罩</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ████ 影像匯出 Modal ████ -->
+<div id="export-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center;">
+  <div style="background:#1f2833;border:2px solid #66fcf1;padding:24px;min-width:300px;font-family:'Courier New',monospace;color:#c5c6c7">
+    <div style="color:#66fcf1;font-size:14px;margin-bottom:16px;border-bottom:1px solid #45a29e;padding-bottom:8px;">💾 匯出選項 (自訂尺寸)</div>
+    <div style="display:flex;gap:12px;margin-bottom:12px;align-items:center">
+      <span style="font-size:11px;color:#b026ff">格式:</span>
+      <select id="export-format" style="width:100px;background:#0b0c10;color:#66fcf1;border:1px solid #45a29e;padding:4px;font-family:inherit">
+        <option value="png">PNG</option>
+        <option value="jpg">JPG</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:12px;margin-bottom:12px;align-items:center">
+      <span style="font-size:11px;color:#b026ff">W:</span>
+      <input type="number" id="export-w" oninput="updateExportAspect('w')" style="width:70px;background:#0b0c10;color:#66fcf1;border:1px solid #45a29e;padding:4px;font-family:inherit">
+      <span style="font-size:11px;color:#b026ff">H:</span>
+      <input type="number" id="export-h" oninput="updateExportAspect('h')" style="width:70px;background:#0b0c10;color:#66fcf1;border:1px solid #45a29e;padding:4px;font-family:inherit">
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+      <input type="checkbox" id="export-aspect" checked>
+      <span style="font-size:11px;color:#b026ff">鎖定長寬比</span>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="doExport()" style="flex:1;padding:8px;background:transparent;color:#66fcf1;border:2px solid #66fcf1;cursor:pointer;font-family:inherit;font-weight:bold;">⏬ 確定下載</button>
+      <button onclick="document.getElementById('export-modal').style.display='none'" style="padding:8px 16px;background:transparent;color:#ff6b6b;border:1px solid #ff6b6b;cursor:pointer;font-family:inherit">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ████ 分割圖片進階 Modal ████ -->
+<div id="split-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:200;align-items:center;justify-content:center;flex-direction:column">
+  
+  <div style="background:#1f2833;border:2px solid #66fcf1;padding:16px;width:95%;max-width:1100px;font-family:'Courier New',monospace;color:#c5c6c7;display:flex;gap:20px;max-height:90vh;">
+    
+    <!-- 左側設定 -->
+    <div style="width:280px;flex-shrink:0;display:flex;flex-direction:column;gap:12px;overflow-y:auto;">
+       <div style="color:#66fcf1;font-size:14px;border-bottom:1px solid #45a29e;padding-bottom:8px;">✂ 分割圖片設定</div>
+       
+       <label style="font-size:11px;color:#b026ff">欄 (Cols) / 列 (Rows):</label>
+       <div style="display:flex;gap:8px;">
+           <input type="number" id="split-cols" value="2" min="1" oninput="updateSplitPreviewRealtime()" style="width:70px;background:#0b0c10;color:#66fcf1;border:1px solid #45a29e;padding:4px;font-family:inherit">
+           <input type="number" id="split-rows" value="2" min="1" oninput="updateSplitPreviewRealtime()" style="width:70px;background:#0b0c10;color:#66fcf1;border:1px solid #45a29e;padding:4px;font-family:inherit">
+       </div>
+       
+       <label style="font-size:11px;color:#b026ff">自訂尺寸 W / H (選填, 覆蓋行列):</label>
+       <div style="display:flex;gap:8px;">
+           <input type="number" id="split-w" placeholder="自動" oninput="updateSplitPreviewRealtime()" style="width:70px;background:#0b0c10;color:#66fcf1;border:1px solid #45a29e;padding:4px;font-family:inherit">
+           <input type="number" id="split-h" placeholder="自動" oninput="updateSplitPreviewRealtime()" style="width:70px;background:#0b0c10;color:#66fcf1;border:1px solid #45a29e;padding:4px;font-family:inherit">
+       </div>
+
+       <label style="font-size:11px;color:#b026ff">起始偏移 X / Y:</label>
+       <div style="display:flex;gap:8px;">
+           <input type="number" id="split-ox" value="0" min="0" oninput="updateSplitPreviewRealtime()" style="width:70px;background:#0b0c10;color:#66fcf1;border:1px solid #45a29e;padding:4px;font-family:inherit">
+           <input type="number" id="split-oy" value="0" min="0" oninput="updateSplitPreviewRealtime()" style="width:70px;background:#0b0c10;color:#66fcf1;border:1px solid #45a29e;padding:4px;font-family:inherit">
+       </div>
+       
+       <label style="font-size:11px;color:#b026ff">重疊 px (拼接安全邊):</label>
+       <input type="number" id="split-overlap" value="0" min="0" oninput="updateSplitPreviewRealtime()" style="width:70px;background:#0b0c10;color:#66fcf1;border:1px solid #45a29e;padding:4px;font-family:inherit">
+
+       <div style="margin-top:auto;display:flex;flex-direction:column;gap:8px">
+          <button class="al-btn" onclick="generateSplitSlices()" style="padding:8px">👁 產生切割預覽</button>
+          <button class="al-btn" onclick="doSplitDownload()" id="split-dl-btn" disabled style="background:#66fcf1;color:#000;padding:8px">⏬ 確認下載全部</button>
+          <button class="al-btn" onclick="closeSplitModal()" style="border-color:#ff6b6b;color:#ff6b6b;padding:8px">✕ 取消</button>
+       </div>
+    </div>
+
+    <!-- 右側預覽區 -->
+    <div style="flex:1;background:#0b0c10;border:1px solid #45a29e;position:relative;overflow:auto;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:10px" id="split-preview-pane">
+        <!-- 裝載原圖+格線 的 canvas -->
+        <div style="position:relative;box-shadow:0 0 10px #000;">
+            <canvas id="split-canvas-preview" style="max-width:100%;max-height:80vh;border:1px solid #45a29e;"></canvas>
+        </div>
+        <!-- 或是顯示分割後的 img 陣列 -->
+        <div id="split-result-grid" style="display:none;gap:4px;margin-top:10px;flex-wrap:wrap;justify-content:center;max-height:80vh;overflow-y:auto;background:#161b22;padding:10px;border:1px dashed #45a29e;width:100%">
+        </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ████ 修復選取浮動提示 ████ -->
+<div id="repair-hint" style="display:none;position:fixed;bottom:40px;left:50%;transform:translateX(-50%);background:#1f2833;border:1px solid #66fcf1;padding:8px 16px;color:#66fcf1;font-size:12px;z-index:100;font-family:'Courier New',monospace;">
+  框選範圍已設定 &nbsp;
+  <button onclick="applyRepair()" style="background:#66fcf1;color:#0b0c10;border:none;padding:4px 10px;cursor:pointer;font-weight:bold;margin-left:8px">⚡ 智慧修復</button>
+  <button onclick="clearRepair()" style="background:transparent;color:#ff6b6b;border:1px solid #ff6b6b;padding:4px 8px;cursor:pointer;margin-left:4px">✕</button>
+</div>
+
+<!-- ████ 選取/裁剪浮動提示 ████ -->
+<div id="select-hint" style="display:none;position:fixed;bottom:40px;left:50%;transform:translateX(-50%);background:#1f2833;border:1px solid #66fcf1;padding:8px 16px;color:#66fcf1;font-size:12px;z-index:100;font-family:'Courier New',monospace;">
+  選取範圍：可拖曳節點調整大小 &nbsp;
+  <button onclick="applyCrop()" style="background:#66fcf1;color:#0b0c10;border:none;padding:4px 10px;cursor:pointer;font-weight:bold;margin-left:8px">✂ 裁剪畫布</button>
+  <button onclick="clearSelect()" style="background:transparent;color:#ff6b6b;border:1px solid #ff6b6b;padding:4px 8px;cursor:pointer;margin-left:4px">✕ 取消</button>
+</div>
+
+<!-- 狀態列 -->
+<div id="statusbar">
+  <span id="sb-mode">模式: 移動</span>
+  <span id="sb-pos">X:0 Y:0</span>
+  <span id="sb-size">畫板: 800×600</span>
+  <span id="sb-layers">圖層: 0</span>
+  <span id="sb-history">歷史: 0/0</span>
+  <span id="sb-zoom">縮放: 100%</span>
+</div>
+
+<!-- ████████████ JavaScript ████████████ -->
+<script>
+// ============================================================
+// 0. 常數 & 全域變數
+// ============================================================
+const canvas    = document.getElementById('canvas');
+const ctx       = canvas.getContext('2d');
+const layerListEl = document.getElementById('layer-list');
+const colorPicker = document.getElementById('cur-color');
+
+let layers      = [];
+let activeIndex = -1;
+let mode        = 'move';
+
+let historyStack = [];
+let historyIndex = -1;
+const MAX_HISTORY = 20;
+
+let isDragging  = false;
+let dragOffset  = { x:0, y:0 };
+let penNodes    = [];       // 鋼筆暫存節點
+let isDrawing   = false;    // 筆刷繪製中
+let zoom        = 1;
+
+// ── 仿製圖章 (Clone Stamp) 狀態 ──
+let cloneSource   = null;   // {x,y} Alt+Click 設定的取樣來源
+let cloneSnapshot = null;   // 取樣時的畫布快照
+let cloneFirstPt  = null;   // 本次拖曳的起始點（計算偏移量用）
+let stampCanvas   = null;   // 累積仿製筆觸的 offscreen canvas
+let stampCtx      = null;
+
+// ── 智慧修復 (Inpaint) 狀態 ──
+let repairPath    = [];     // 塗抹修復的路徑
+
+// ── 模糊與其他 ──
+
+// ── 選取框 (Select / Crop) 狀態 ──
+let selectRect       = null;
+let selectDragHandle = null;
+let selectStart      = null;
+let selectOrigRect   = null;
+
+// 畫板初始尺寸
+canvas.width  = 800;
+canvas.height = 600;
+
+// ============================================================
+// 1. Web Worker（動態建立，多執行緒像素運算）
+// ============================================================
+const workerSrc = `
+self.onmessage = function(e) {
+    const { op, imgData, params, layerIndex } = e.data;
+    const d = imgData.data;
+    const clamp = (v) => Math.max(0, Math.min(255, v));
+
+    if (op === 'levels') {
+        const { min, max } = params;
+        const range = max - min || 1;
+        for (let i = 0; i < d.length; i += 4)
+            for (let c = 0; c < 3; c++)
+                d[i+c] = clamp(((d[i+c] - min) / range) * 255);
+    }
+    else if (op === 'blur') {
+        const { radius, width, height } = params;
+        const r = Math.max(1, Math.floor(radius));
+        const src = new Uint8ClampedArray(d);
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                let rr=0,gg=0,bb=0,aa=0,cnt=0;
+                for (let kx=-r; kx<=r; kx++) {
+                    const nx=Math.min(width-1,Math.max(0,x+kx)); const idx=(y*width+nx)*4;
+                    rr+=src[idx]; gg+=src[idx+1]; bb+=src[idx+2]; aa+=src[idx+3]; cnt++;
+                }
+                const idx=(y*width+x)*4;
+                d[idx]=rr/cnt; d[idx+1]=gg/cnt; d[idx+2]=bb/cnt; d[idx+3]=aa/cnt;
+            }
+        }
+        const tmp=new Uint8ClampedArray(d);
+        for (let y=0; y<height; y++) {
+            for (let x=0; x<width; x++) {
+                let rr=0,gg=0,bb=0,aa=0,cnt=0;
+                for (let ky=-r; ky<=r; ky++) {
+                    const ny=Math.min(height-1,Math.max(0,y+ky)); const idx=(ny*width+x)*4;
+                    rr+=tmp[idx]; gg+=tmp[idx+1]; bb+=tmp[idx+2]; aa+=tmp[idx+3]; cnt++;
+                }
+                const idx=(y*width+x)*4;
+                d[idx]=rr/cnt; d[idx+1]=gg/cnt; d[idx+2]=bb/cnt; d[idx+3]=aa/cnt;
+            }
+        }
+    }
+    self.postMessage({ imgData, layerIndex });
+};
+`;
+const workerBlob = new Blob([workerSrc], { type:'application/javascript' });
+const imageWorker = new Worker(URL.createObjectURL(workerBlob));
+
+imageWorker.onmessage = (e) => {
+    const { imgData, layerIndex } = e.data;
+    const offC = document.createElement('canvas');
+    offC.width = imgData.width; offC.height = imgData.height;
+    offC.getContext('2d').putImageData(imgData, 0, 0);
+    const img = new Image();
+    img.onload = () => {
+        const l = layers[layerIndex];
+        l.img = img;
+        document.getElementById('loading-overlay').style.display = 'none';
+        saveHistory(); render();
+    };
+    img.src = offC.toDataURL();
+};
+
+// Worker 呼叫通用函式
+function sendToWorker(op, params) {
+    if (activeIndex === -1 || layers[activeIndex].type !== 'img') {
+        alert('請先選擇一個圖片圖層'); return;
+    }
+    const l = layers[activeIndex];
+    const offC = document.createElement('canvas');
+    offC.width = l.origW; offC.height = l.origH;
+    offC.getContext('2d').drawImage(l.img, 0, 0);
+    const imgData = offC.getContext('2d').getImageData(0, 0, l.origW, l.origH);
+    document.getElementById('loading-overlay').style.display = 'flex';
+    imageWorker.postMessage({ op, imgData, params: { ...params, width: l.origW, height: l.origH }, layerIndex: activeIndex });
+}
+
+function applyLevels() { sendToWorker('levels', { min: +document.getElementById('lvl-min').value, max: +document.getElementById('lvl-max').value }); }
+function applyBlur()   { sendToWorker('blur',   { radius: +document.getElementById('adj-blur').value }); }
+
+// ============================================================
+// 2. 歷史紀錄（Undo / Redo）
+// ============================================================
+function saveHistory() {
+    const snap = {
+        w: canvas.width, h: canvas.height,
+        layers: layers.map(l => {
+            const c = { ...l };
+            if (l.paths)     c.paths     = l.paths.map(p => p.map(pt => ({...pt})));
+            if (l.maskPaths) c.maskPaths = l.maskPaths.map(p => p.map(pt=>({...pt})));
+            if (l.penNodes)  c.penNodes  = l.penNodes.map(pt=>({...pt}));
+            return c;
+        })
+    };
+    historyStack = historyStack.slice(0, historyIndex + 1);
+    historyStack.push(snap);
+    if (historyStack.length > MAX_HISTORY) historyStack.shift();
+    else historyIndex++;
+    updateHistoryUI();
+    triggerAutoSave();
+}
+
+function undo() {
+    if (historyIndex <= 0) return;
+    historyIndex--;
+    restoreSnap(historyStack[historyIndex]);
+}
+function redo() {
+    if (historyIndex >= historyStack.length - 1) return;
+    historyIndex++;
+    restoreSnap(historyStack[historyIndex]);
+}
+function restoreSnap(s) {
+    canvas.width = s.w; canvas.height = s.h;
+    layers = s.layers.map(l => ({ ...l,
+        paths:     l.paths     ? l.paths.map(p=>p.map(pt=>({...pt})))     : undefined,
+        maskPaths: l.maskPaths ? l.maskPaths.map(p=>p.map(pt=>({...pt}))) : undefined,
+        penNodes:  l.penNodes  ? l.penNodes.map(pt=>({...pt}))            : undefined,
+    }));
+    if (activeIndex >= layers.length) activeIndex = layers.length - 1;
+    if (typeof applyZoom === 'function') applyZoom();
+    updateHistoryUI(); updateUI(); render();
+}
+function updateHistoryUI() {
+    document.getElementById('btn-undo').disabled = historyIndex <= 0;
+    document.getElementById('btn-redo').disabled = historyIndex >= historyStack.length - 1;
+    document.getElementById('sb-history').textContent = `歷史: ${historyIndex+1}/${historyStack.length}`;
+}
+
+// ============================================================
+// 3. IndexedDB 本地存檔
+// ============================================================
+let db;
+function openIDB() {
+    return new Promise((res, rej) => {
+        const req = indexedDB.open('DVEditor', 1);
+        req.onupgradeneeded = e => {
+            const d = e.target.result;
+            if (!d.objectStoreNames.contains('projects')) d.createObjectStore('projects', { keyPath:'id' });
+        };
+        req.onsuccess = e => { db = e.target.result; res(db); };
+        req.onerror   = e => rej(e.target.error);
+    });
+}
+
+// 將 img 物件序列化為 base64 字串
+function serializeLayers() {
+    return layers.map(l => {
+        const s = { ...l };
+        if (l.img) s.imgSrc = l.img.src; // Data URL 字串
+        delete s.img;
+        return s;
+    });
+}
+
+async function saveToIDB() {
+    if (!db) await openIDB();
+    const tx = db.transaction('projects', 'readwrite');
+    tx.objectStore('projects').put({ id: 'main', w: canvas.width, h: canvas.height, bg: document.getElementById('bg-color').value, layers: serializeLayers(), savedAt: Date.now() });
+    document.getElementById('autosave-badge').textContent = '● 已存檔 ' + new Date().toLocaleTimeString();
+}
+
+async function loadFromIDB() {
+    if (!db) await openIDB();
+    const tx = db.transaction('projects', 'readonly');
+    const req = tx.objectStore('projects').get('main');
+    req.onsuccess = async (e) => {
+        const data = e.target.result;
+        if (!data) { alert('找不到存檔'); return; }
+        canvas.width = data.w; canvas.height = data.h;
+        document.getElementById('cnv-w').value = data.w;
+        document.getElementById('cnv-h').value = data.h;
+        if (data.bg) document.getElementById('bg-color').value = data.bg;
+
+        layers = [];
+        for (const s of data.layers) {
+            const l = { ...s };
+            if (s.imgSrc) {
+                l.img = await loadImage(s.imgSrc);
+                delete l.imgSrc;
+            }
+            layers.push(l);
+        }
+        activeIndex = layers.length > 0 ? layers.length - 1 : -1;
+        saveHistory(); updateUI(); render();
+        document.getElementById('autosave-badge').textContent = '● 已讀取 ' + new Date().toLocaleTimeString();
+    };
+}
+
+// Auto-save 防抖
+let autoSaveTimer = null;
+function triggerAutoSave() {
+    if (!db) return;
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(() => { saveToIDB(); }, 3000);
+}
+
+// 初始化 IDB
+openIDB().then(() => {
+    document.getElementById('autosave-badge').textContent = '● 自動存檔: 開啟';
+});
+
+// ============================================================
+// 4. 圖層管理
+// ============================================================
+function mkId() { return Date.now() + Math.random().toString(36).slice(2); }
+
+function baseLayer(type, name) {
+    return {
+        id: mkId(), type, name,
+        parentId: null,
+        x: canvas.width / 2, y: canvas.height / 2,
+        opacity: 1, scale: 100, angle: 0,
+        blend: 'source-over', visible: true,
+        hasMask: false, maskPaths: [],
+        maskInvert: false,
+        lockAlpha: false, lockImage: false, lockPos: false, lockAll: false, fill: 1,
+        // 修圖調整參數（非破壞性，即時預覽）
+        adj: { exposure:0, contrast:0, highlights:0, shadows:0, whites:0, blacks:0,
+               temp:0, tint:0, saturation:0, vibrance:0, clarity:0, dehaze:0, vignette:0, photoFilter:0, pfColor:'#ec8a00' },
+    };
+}
+
+function toggleLock(type) {
+    if (activeIndex === -1) return;
+    const l = layers[activeIndex];
+    if (type === 'alpha') l.lockAlpha = !l.lockAlpha;
+    if (type === 'image') l.lockImage = !l.lockImage;
+    if (type === 'pos')   l.lockPos   = !l.lockPos;
+    if (type === 'all')   l.lockAll   = !l.lockAll;
+    selectLayer(activeIndex);
+    saveHistory();
+}
+
+// ── 將 adj 物件轉為 CSS filter 字串（用於即時預覽）──
+function buildCSSFilter(adj) {
+    if (!adj) return 'none';
+    // 曝光：每1EV約等於亮度*2，用 brightness() 模擬
+    const brightness = Math.max(0.01, 1 + adj.exposure * 0.6);
+    // 對比：CSS contrast(1)=正常, 0.5=低對比, 2=高對比
+    const contrast   = Math.max(0.01, 1 + adj.contrast / 100);
+    // 飽和度
+    const saturate   = Math.max(0, 1 + (adj.saturation + adj.vibrance * 0.7) / 100);
+    // 色調（清晰度用 contrast 模擬）
+    const clarityVal = adj.clarity > 0
+        ? contrast * (1 + adj.clarity / 200)
+        : contrast * (1 + adj.clarity / 200);
+    // 色溫：暖色→紅藍，用 sepia + hue-rotate 組合近似
+    // warm>0：偏橘暖；cold<0：偏藍冷
+    const hueShift   = -adj.temp * 0.5; // 負值向暖紅移
+    // 去霧：dehaze>0增加對比與飽和
+    const dehazeBoost = 1 + adj.dehaze / 200;
+    const finalBri    = brightness * dehazeBoost;
+    const finalCon    = Math.max(0.01, clarityVal * dehazeBoost);
+    return [
+        `brightness(${finalBri.toFixed(3)})`,
+        `contrast(${finalCon.toFixed(3)})`,
+        `saturate(${(saturate * dehazeBoost).toFixed(3)})`,
+        hueShift ? `hue-rotate(${hueShift.toFixed(1)}deg)` : '',
+        adj.tint ? `hue-rotate(${(adj.tint * 0.3).toFixed(1)}deg)` : '',
+    ].filter(Boolean).join(' ') || 'none';
+}
+
+// ── 高光/暗部/亮部/陰影的像素級補償（Canvas 2D 即時，非Worker）──
+// 在 drawLayerContent 之後疊加修正層
+function applyTonalCanvas(c, l, x, y, w, h) {
+    const adj = l.adj;
+    if (!adj) return;
+    // 高光壓暗 / 提亮
+    if (adj.highlights !== 0) {
+        const alpha = Math.abs(adj.highlights) / 500; // 輕柔效果
+        c.save();
+        c.globalCompositeOperation = adj.highlights < 0 ? 'multiply' : 'screen';
+        c.globalAlpha = alpha;
+        c.fillStyle = adj.highlights < 0 ? '#000' : '#fff';
+        c.fillRect(x, y, w, h);
+        c.restore();
+    }
+    // 暗部提亮 / 加深
+    if (adj.shadows !== 0) {
+        const alpha = Math.abs(adj.shadows) / 500;
+        c.save();
+        c.globalCompositeOperation = adj.shadows > 0 ? 'screen' : 'multiply';
+        c.globalAlpha = alpha;
+        c.fillStyle = adj.shadows > 0 ? '#444' : '#000';
+        c.fillRect(x, y, w, h);
+        c.restore();
+    }
+    // 色溫：暖（+R-B）/ 冷（-R+B）透過疊色層近似
+    if (adj.temp !== 0) {
+        const alpha = Math.abs(adj.temp) / 600;
+        c.save();
+        c.globalCompositeOperation = 'multiply';
+        c.globalAlpha = alpha;
+        c.fillStyle = adj.temp > 0 ? '#ff9933' : '#3399ff';
+        c.fillRect(x, y, w, h);
+        c.restore();
+    }
+    // 暈影：四角加暗
+    if (adj.vignette !== 0) {
+        const strength = adj.vignette / 100;
+        const cx = x + w/2, cy = y + h/2;
+        const r = Math.max(w, h) * 0.75;
+        const grd = c.createRadialGradient(cx, cy, r*0.3, cx, cy, r);
+        if (strength > 0) {
+            grd.addColorStop(0, 'rgba(0,0,0,0)');
+            grd.addColorStop(1, `rgba(0,0,0,${Math.min(0.9, strength)})`);
+        } else {
+            grd.addColorStop(0, `rgba(255,255,255,${Math.min(0.6, -strength)})`);
+            grd.addColorStop(1, 'rgba(255,255,255,0)');
+        }
+        c.save();
+        c.fillStyle = grd;
+        c.fillRect(x, y, w, h);
+        c.restore();
+    }
+    // 照片濾鏡
+    if (adj.photoFilter > 0) {
+        c.save();
+        c.globalCompositeOperation = 'color';
+        c.globalAlpha = adj.photoFilter / 100;
+        c.fillStyle = adj.pfColor || '#ec8a00';
+        c.fillRect(x, y, w, h);
+        c.restore();
+    }
+}
+
+// ── 新增各類型圖層 ──
+document.getElementById('add-img-input').addEventListener('change', function(e) {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    const isFirstImage = layers.filter(l => l.type === 'img').length === 0;
+    let loaded = 0;
+    files.forEach((file, fileIdx) => {
+        const reader = new FileReader();
+        reader.onload = ev => {
+            const img = new Image();
+            img.onload = () => {
+                // 第一張圖片匯入時，自動將畫布調整為圖片尺寸
+                if (isFirstImage && fileIdx === 0) {
+                    canvas.width  = img.width;
+                    canvas.height = img.height;
+                    document.getElementById('cnv-w').value = img.width;
+                    document.getElementById('cnv-h').value = img.height;
+                    if (typeof applyZoom === 'function') applyZoom();
+                }
+                const l = baseLayer('img', file.name);
+                l.img = img; l.origW = img.width; l.origH = img.height;
+                l.currentW = img.width; l.currentH = img.height;
+                // 第一張置於 (0,0)，之後的置中
+                l.x = isFirstImage && fileIdx === 0 ? 0 : canvas.width / 2 - img.width / 2;
+                l.y = isFirstImage && fileIdx === 0 ? 0 : canvas.height / 2 - img.height / 2;
+                layers.push(l);
+                if (++loaded === files.length) { saveHistory(); selectLayer(layers.length - 1); }
+            };
+            img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+});
+
+function addTextLayer() {
+    const l = baseLayer('text', '文字圖層');
+    l.text = 'DV LOOP'; l.fontSize = 50; l.color = colorPicker.value;
+    l.fontFamily = 'Courier New'; l.bold = false; l.italic = false;
+    l.x = canvas.width / 2; l.y = canvas.height / 2;
+    layers.push(l); saveHistory(); selectLayer(layers.length - 1);
+}
+function addGroupLayer() {
+    const l = baseLayer('group', '群組資料夾');
+    layers.push(l); saveHistory(); selectLayer(layers.length - 1);
+}
+function addDrawLayer() {
+    const l = baseLayer('draw', '塗鴉圖層');
+    l.paths = []; l.x = 0; l.y = 0;
+    layers.push(l); saveHistory(); selectLayer(layers.length - 1);
+}
+function addSolidLayer() {
+    const l = baseLayer('solid', '色塊圖層');
+    l.color = colorPicker.value;
+    layers.push(l); saveHistory(); selectLayer(layers.length - 1);
+}
+
+// ── 選擇圖層 ──
+function selectLayer(idx) {
+    if (idx < 0 || idx >= layers.length) return;
+    activeIndex = idx;
+    const l = layers[idx];
+    // 同步左側面板與舊有屬性值
+    const blendLeft = document.getElementById('p-blend-left'); if(blendLeft) blendLeft.value = l.blend;
+    const opNum = document.getElementById('p-opacity-num'); if(opNum) opNum.value = Math.round(l.opacity * 100);
+    const fillNum = document.getElementById('p-fill-num'); if(fillNum) fillNum.value = Math.round((l.fill !== undefined ? l.fill : 1) * 100);
+
+    const la = document.getElementById('btn-lock-alpha'); if(la) la.classList.toggle('on', !!l.lockAlpha);
+    const li = document.getElementById('btn-lock-image'); if(li) li.classList.toggle('on', !!l.lockImage);
+    const lp = document.getElementById('btn-lock-pos'); if(lp) lp.classList.toggle('on', !!l.lockPos);
+    const lall = document.getElementById('btn-lock-all'); if(lall) lall.classList.toggle('on', !!l.lockAll);
+
+    document.getElementById('p-blend').value   = l.blend;
+    document.getElementById('p-opacity').value = Math.round(l.opacity * 100);
+    document.getElementById('p-op-val').textContent = Math.round(l.opacity * 100);
+    document.getElementById('p-scale').value   = l.scale;
+    document.getElementById('p-scale-val').textContent = l.scale;
+    document.getElementById('p-angle').value   = l.angle;
+    document.getElementById('p-angle-val').textContent = l.angle;
+    // 文字屬性
+    if (l.type === 'text') {
+        document.getElementById('p-text').value       = l.text;
+        document.getElementById('p-font').value        = l.fontFamily || 'Courier New';
+        document.getElementById('p-font-size').value   = l.fontSize;
+        document.getElementById('p-font-size-val').textContent = l.fontSize;
+        document.getElementById('p-text-color').value  = l.color || '#ffffff';
+        document.getElementById('p-text-bold').checked   = !!l.bold;
+        document.getElementById('p-text-italic').checked = !!l.italic;
+    }
+    document.getElementById('mask-invert').checked = !!l.maskInvert;
+    // 同步修圖調整滑桿
+    if (l.adj) syncAdjUI(l.adj);
+    updateUI();
+    render(); // 修正：確保載入圖層或點選圖層時，畫布與選取框能即時刷新顯示
+}
+
+// 更新當前選中圖層的屬性
+function updateActiveLayer(key, val) {
+    if (activeIndex === -1) return;
+    layers[activeIndex][key] = val;
+    if (key === 'scale' && layers[activeIndex].type === 'img') {
+        const l = layers[activeIndex];
+        l.currentW = l.origW * (l.scale / 100);
+        l.currentH = l.origH * (l.scale / 100);
+    }
+    render();
+}
+
+// ── 修圖調整 Helper 函式 ──
+
+// 設定單一調整屬性并即時預覽
+function setAdj(key, val, labelId) {
+    if (activeIndex === -1) return;
+    if (!layers[activeIndex].adj) layers[activeIndex].adj = {};
+    layers[activeIndex].adj[key] = val;
+    if (labelId) document.getElementById(labelId).textContent = val;
+    render();
+}
+
+// 將調整面板同步到目前圖層的 adj 值
+function syncAdjUI(adj) {
+    const map = {
+        'a-exp': ['exposure', 'a-exp-v'],
+        'a-con': ['contrast',  'a-con-v'],
+        'a-hi':  ['highlights','a-hi-v'],
+        'a-sh':  ['shadows',   'a-sh-v'],
+        'a-wh':  ['whites',    'a-wh-v'],
+        'a-bl':  ['blacks',    'a-bl-v'],
+        'a-tmp': ['temp',      'a-tmp-v'],
+        'a-tnt': ['tint',      'a-tnt-v'],
+        'a-sat': ['saturation','a-sat-v'],
+        'a-vib': ['vibrance',  'a-vib-v'],
+        'a-cla': ['clarity',   'a-cla-v'],
+        'a-deh': ['dehaze',    'a-deh-v'],
+        'a-vig': ['vignette',  'a-vig-v'],
+        'a-pf-dens': ['photoFilter', 'a-pf-v'],
+    };
+    const pfc = document.getElementById('a-pf-color');
+    if (pfc && adj.pfColor) pfc.value = adj.pfColor;
+    Object.entries(map).forEach(([inputId, [key, labelId]]) => {
+        const v = adj[key] ?? 0;
+        const el = document.getElementById(inputId);
+        if (el) el.value = v;
+        const lb = document.getElementById(labelId);
+        if (lb) lb.textContent = v;
+    });
+}
+
+// 重置調整到預設像機彑態
+function resetAdj() {
+    if (activeIndex === -1) return;
+    layers[activeIndex].adj = {
+        exposure:0, contrast:0, highlights:0, shadows:0, whites:0, blacks:0,
+        temp:0, tint:0, saturation:0, vibrance:0, clarity:0, dehaze:0, vignette:0
+    };
+    syncAdjUI(layers[activeIndex].adj);
+    render();
+}
+
+// 預設風格
+const PRESETS = {
+    vivid:  { exposure:0.2, contrast:30, highlights:-10, shadows:10, saturation:30, vibrance:20, clarity:20, temp:5,  tint:0,  vignette:20, dehaze:10, whites:0, blacks:0 },
+    matte:  { exposure:0.3, contrast:-20, highlights:-30, shadows:30, saturation:-20, vibrance:0, clarity:-10, temp:10, tint:5, vignette:0,  dehaze:0,  whites:30, blacks:20 },
+    warm:   { exposure:0.1, contrast:10, highlights:0,   shadows:5,  saturation:10,  vibrance:10, clarity:5,  temp:60, tint:10, vignette:15, dehaze:0,  whites:0,  blacks:0 },
+    cold:   { exposure:0,   contrast:15, highlights:-5,  shadows:0,  saturation:5,   vibrance:5,  clarity:10, temp:-60,tint:-10,vignette:20, dehaze:0,  whites:0,  blacks:0 },
+    bw:     { exposure:0,   contrast:20, highlights:-10, shadows:10, saturation:-100,vibrance:-100,clarity:15,temp:0,  tint:0,  vignette:30, dehaze:0,  whites:0,  blacks:0 },
+    fade:   { exposure:0.5, contrast:-30,highlights:20,  shadows:30, saturation:-30, vibrance:-20, clarity:-20,temp:10,tint:5,  vignette:0,  dehaze:0,  whites:40, blacks:30 },
+};
+function applyPreset(name) {
+    if (activeIndex === -1) return;
+    if (!layers[activeIndex].adj) layers[activeIndex].adj = {};
+    Object.assign(layers[activeIndex].adj, PRESETS[name] || {});
+    syncAdjUI(layers[activeIndex].adj);
+    render();
+}
+
+// ── 刪除 / 複製 / 合併 ──
+function deleteActiveLayer() {
+    if (activeIndex === -1) return;
+    if (!confirm(`刪除圖層「${layers[activeIndex].name}」？`)) return;
+    if (layers[activeIndex].type === 'group') {
+        layers.forEach(l => { if (l.parentId === layers[activeIndex].id) l.parentId = null; });
+    }
+    layers.splice(activeIndex, 1);
+    activeIndex = Math.min(activeIndex, layers.length - 1);
+    saveHistory(); updateUI(); render();
+}
+
+function duplicateLayer() {
+    if (activeIndex === -1) return;
+    const src = layers[activeIndex];
+    const copy = { ...src, id: mkId(), name: src.name + ' 副本',
+        paths:     src.paths     ? src.paths.map(p=>p.map(pt=>({...pt})))     : undefined,
+        maskPaths: src.maskPaths ? src.maskPaths.map(p=>p.map(pt=>({...pt}))) : undefined,
+        penNodes:  src.penNodes  ? src.penNodes.map(pt=>({...pt}))            : undefined,
+    };
+    layers.splice(activeIndex + 1, 0, copy);
+    saveHistory(); selectLayer(activeIndex + 1);
+}
+
+function mergeDown() {
+    if (activeIndex <= 0) return;
+    const above = layers[activeIndex];
+    const below = layers[activeIndex - 1];
+    // 建立合併結果：先畫 below 再畫 above
+    const offC = document.createElement('canvas');
+    offC.width = canvas.width; offC.height = canvas.height;
+    const offCtx = offC.getContext('2d');
+    renderLayerToCtx(offCtx, below);
+    renderLayerToCtx(offCtx, above);
+    const img = new Image();
+    img.onload = () => {
+        const merged = baseLayer('img', `${below.name}+${above.name}`);
+        merged.img = img; merged.origW = offC.width; merged.origH = offC.height;
+        merged.currentW = offC.width; merged.currentH = offC.height;
+        merged.x = 0; merged.y = 0;
+        layers.splice(activeIndex - 1, 2, merged);
+        activeIndex = activeIndex - 1;
+        saveHistory(); updateUI(); render();
+    };
+    img.src = offC.toDataURL();
+}
+
+function flattenAll() {
+    if (!confirm('合併所有可見圖層為一個圖片圖層？')) return;
+    const offC = document.createElement('canvas');
+    offC.width = canvas.width; offC.height = canvas.height;
+    const offCtx = offC.getContext('2d');
+    [...layers].forEach(l => renderLayerToCtx(offCtx, l));
+    const img = new Image();
+    img.onload = () => {
+        layers = [{
+            id: mkId(), type:'img', name:'合併圖層', parentId:null,
+            img, origW: offC.width, origH: offC.height,
+            currentW: offC.width, currentH: offC.height,
+            x:0, y:0, opacity:1, scale:100, angle:0,
+            blend:'source-over', visible:true, hasMask:false, maskPaths:[], maskInvert:false
+        }];
+        activeIndex = 0;
+        saveHistory(); updateUI(); render();
+    };
+    img.src = offC.toDataURL();
+}
+
+// ── 圖層移動（順序） ──
+function moveLayerOrder(idx, dir) {
+    const ni = idx + dir;
+    if (ni < 0 || ni >= layers.length) return;
+    [layers[idx], layers[ni]] = [layers[ni], layers[idx]];
+    activeIndex = ni;
+    saveHistory(); updateUI(); render();
+}
+
+// ── 遮罩操作 ──
+function addMask() {
+    if (activeIndex === -1) return;
+    layers[activeIndex].hasMask = true;
+    layers[activeIndex].maskPaths = [];
+    saveHistory(); updateUI();
+}
+function deleteMask() {
+    if (activeIndex === -1) return;
+    layers[activeIndex].hasMask = false;
+    layers[activeIndex].maskPaths = [];
+    saveHistory(); render();
+}
+function applyMask() {
+    // 把遮罩燒錄進圖片裡，清除遮罩路徑
+    if (activeIndex === -1 || !layers[activeIndex].hasMask) return;
+    const l = layers[activeIndex];
+    const offC = document.createElement('canvas');
+    offC.width = canvas.width; offC.height = canvas.height;
+    const offCtx = offC.getContext('2d');
+    renderLayerToCtx(offCtx, l); // 包含遮罩效果
+    const img = new Image();
+    img.onload = () => {
+        l.img = img; l.origW = offC.width; l.origH = offC.height;
+        l.currentW = offC.width; l.currentH = offC.height;
+        l.x = 0; l.y = 0; l.scale = 100;
+        l.hasMask = false; l.maskPaths = [];
+        saveHistory(); render();
+    };
+    img.src = offC.toDataURL();
+}
+
+// ============================================================
+// 5. 渲染引擎
+// ============================================================
+function loadImage(src) {
+    return new Promise(res => { const i = new Image(); i.onload = () => res(i); i.src = src; });
+}
+
+function renderLayerToCtx(c, l) {
+    if (!l.visible || l.type === 'group') return;
+    if (l.parentId !== null) {
+        const parent = layers.find(p => p.id === l.parentId);
+        if (parent && !parent.visible) return;
+    }
+
+    c.save();
+    const op = l.opacity !== undefined ? l.opacity : 1;
+    const f = l.fill !== undefined ? l.fill : 1;
+    c.globalAlpha = Math.max(0, Math.min(1, op * f));
+    c.globalCompositeOperation = l.blend;
+
+    // 旋轉中心
+    let cx = l.x, cy = l.y;
+    if (l.type === 'img') { cx = l.x + l.currentW / 2; cy = l.y + l.currentH / 2; }
+    if (l.angle) {
+        c.translate(cx, cy);
+        c.rotate(l.angle * Math.PI / 180);
+        c.translate(-cx, -cy);
+    }
+
+    // 遮罩準備
+    const hasMask = l.hasMask && l.maskPaths && l.maskPaths.length > 0;
+    const maskInvert = l.maskInvert || document.getElementById('mask-invert').checked;
+
+    if (hasMask) {
+        c.save();
+        // 先建 offscreen 畫圖層
+        const offA = document.createElement('canvas'); offA.width = canvas.width; offA.height = canvas.height;
+        const ctxA = offA.getContext('2d');
+        drawLayerContent(ctxA, l);
+        // 建遮罩 offscreen
+        const offM = document.createElement('canvas'); offM.width = canvas.width; offM.height = canvas.height;
+        const ctxM = offM.getContext('2d');
+        ctxM.lineWidth = 20; ctxM.lineCap = 'round'; ctxM.lineJoin = 'round'; ctxM.strokeStyle = '#fff';
+        l.maskPaths.forEach(path => {
+            ctxM.beginPath();
+            path.forEach((pt, i) => { i === 0 ? ctxM.moveTo(pt.x + l.x, pt.y + l.y) : ctxM.lineTo(pt.x + l.x, pt.y + l.y); });
+            ctxM.stroke();
+        });
+        // 應用遮罩
+        if (maskInvert) {
+            ctxA.globalCompositeOperation = 'source-in';
+            ctxA.drawImage(offM, 0, 0);
+        } else {
+            ctxA.globalCompositeOperation = 'destination-out';
+            ctxA.drawImage(offM, 0, 0);
+        }
+        c.drawImage(offA, 0, 0);
+        c.restore();
+    } else {
+        drawLayerContent(c, l);
+    }
+
+    c.restore();
+}
+
+function drawLayerContent(c, l) {
+    if (l.type === 'img') {
+        // ★ CSS Filter 即時預覽（曝光/對比/飽和度/色溫等）
+        //    速度極快，每幀套用，不需重新處理像素資料
+        const filterStr = buildCSSFilter(l.adj);
+        c.filter = filterStr;
+        c.drawImage(l.img, l.x, l.y, l.currentW, l.currentH);
+        c.filter = 'none';
+        // 高光/暗部/色溫/暈影：疊加色層近似（即時）
+        applyTonalCanvas(c, l, l.x, l.y, l.currentW, l.currentH);
+    }
+    else if (l.type === 'solid') {
+        c.fillStyle = l.color;
+        c.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    else if (l.type === 'text') {
+        const style = `${l.italic ? 'italic ' : ''}${l.bold ? 'bold ' : ''}${l.fontSize * (l.scale/100)}px ${l.fontFamily || 'Courier New'}`;
+        c.font = style;
+        c.fillStyle = l.color || '#ffffff';
+        c.fillText(l.text, l.x, l.y);
+    }
+    else if (l.type === 'draw' && l.paths) {
+        l.paths.forEach(path => {
+            if (!path.length) return;
+            c.beginPath();
+            c.strokeStyle = path[0].color || colorPicker.value;
+            c.lineWidth   = path[0].size  || 10;
+            c.lineCap = path[0].isPencil ? 'butt' : 'round';
+            c.lineJoin = path[0].isPencil ? 'miter' : 'round';
+            c.globalAlpha = (path[0].opacity || 100) / 100 * l.opacity;
+            path.forEach((pt, i) => {
+                const px = pt.x + l.x, py = pt.y + l.y;
+                i === 0 ? c.moveTo(px, py) : c.lineTo(px, py);
+            });
+            c.stroke();
+        });
+    }
+    else if (l.type === 'pen' && l.penNodes && l.penNodes.length > 1) {
+        c.beginPath();
+        c.strokeStyle = l.color || colorPicker.value;
+        c.lineWidth = l.penWidth || 3;
+        c.lineCap = 'round'; c.lineJoin = 'round';
+        c.moveTo(l.penNodes[0].x + l.x, l.penNodes[0].y + l.y);
+        for (let i = 1; i < l.penNodes.length - 1; i++) {
+            const xc = (l.penNodes[i].x + l.penNodes[i+1].x) / 2 + l.x;
+            const yc = (l.penNodes[i].y + l.penNodes[i+1].y) / 2 + l.y;
+            c.quadraticCurveTo(l.penNodes[i].x + l.x, l.penNodes[i].y + l.y, xc, yc);
+        }
+        const last = l.penNodes[l.penNodes.length - 1];
+        c.lineTo(last.x + l.x, last.y + l.y);
+        if (l.penClose) { c.closePath(); c.fillStyle = l.color || colorPicker.value; c.fill(); }
+        c.stroke();
+    }
+}
+
+function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // 背景色
+    ctx.fillStyle = document.getElementById('bg-color').value;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // 由底至頂繪製圖層
+    [...layers].forEach(l => renderLayerToCtx(ctx, l));
+
+    // 鋼筆暫存節點（操作中）
+    if (mode === 'pen' && penNodes.length > 0) {
+        ctx.save();
+        ctx.strokeStyle = '#ff4d4d'; ctx.lineWidth = 2; ctx.setLineDash([4,3]);
+        ctx.beginPath(); ctx.moveTo(penNodes[0].x, penNodes[0].y);
+        for (let i = 1; i < penNodes.length - 1; i++) {
+            const xc = (penNodes[i].x + penNodes[i+1].x) / 2;
+            const yc = (penNodes[i].y + penNodes[i+1].y) / 2;
+            ctx.quadraticCurveTo(penNodes[i].x, penNodes[i].y, xc, yc);
+        }
+        if (penNodes.length > 1) { const last = penNodes[penNodes.length-1]; ctx.lineTo(last.x, last.y); }
+        ctx.stroke();
+        penNodes.forEach(pt => {
+            ctx.fillStyle = '#fff'; ctx.setLineDash([]);
+            ctx.fillRect(pt.x - 4, pt.y - 4, 8, 8);
+            ctx.strokeStyle = '#ff4d4d'; ctx.lineWidth = 1;
+            ctx.strokeRect(pt.x - 4, pt.y - 4, 8, 8);
+        });
+        ctx.restore();
+    }
+
+    // 選取框線（移動模式）
+    if (activeIndex !== -1 && mode === 'move') {
+        const l = layers[activeIndex];
+        if (l.type === 'img') {
+            ctx.save();
+            ctx.strokeStyle = '#66fcf1'; ctx.lineWidth = 1; ctx.setLineDash([5,3]);
+            const cx = l.x + l.currentW/2, cy = l.y + l.currentH/2;
+            if (l.angle) { ctx.translate(cx,cy); ctx.rotate(l.angle*Math.PI/180); ctx.translate(-cx,-cy); }
+            ctx.strokeRect(l.x, l.y, l.currentW, l.currentH);
+            ctx.restore();
+        }
+    }
+
+    // 仿製圖章：繪製 stampCanvas 疊在最上層（預覽效果）
+    if (mode === 'clone' && stampCanvas) {
+        ctx.drawImage(stampCanvas, 0, 0);
+    }
+    // 仿製來源十字標記
+    if (mode === 'clone' && cloneSource) {
+        ctx.save();
+        ctx.strokeStyle = '#ff4d4d'; ctx.lineWidth = 1.5; ctx.setLineDash([]);
+        const cx = cloneSource.x, cy = cloneSource.y, sz = 10;
+        ctx.beginPath();
+        ctx.moveTo(cx - sz, cy); ctx.lineTo(cx + sz, cy);
+        ctx.moveTo(cx, cy - sz); ctx.lineTo(cx, cy + sz);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(cx, cy, sz * 0.6, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255,77,77,0.5)';
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // 智慧修復：繪製塗抹路徑
+    if (mode === 'repair' && repairPath && repairPath.length > 0) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 107, 107, 0.5)';
+        ctx.lineWidth = +document.getElementById('brush-size').value;
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.beginPath();
+        repairPath.forEach((p,i) => i===0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // 選取框線
+    if (mode === 'select' && selectRect && selectRect.w > 0) {
+        ctx.save();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
+        ctx.setLineDash([5, 5]);
+        ctx.strokeRect(selectRect.x, selectRect.y, selectRect.w, selectRect.h);
+        ctx.strokeStyle = '#000'; ctx.lineDashOffset = 5;
+        ctx.strokeRect(selectRect.x, selectRect.y, selectRect.w, selectRect.h);
+        
+        ctx.fillStyle = '#fff'; ctx.setLineDash([]);
+        const hz = 4 / zoom;
+        const pts = [
+            [selectRect.x, selectRect.y],
+            [selectRect.x + selectRect.w/2, selectRect.y],
+            [selectRect.x + selectRect.w, selectRect.y],
+            [selectRect.x + selectRect.w, selectRect.y + selectRect.h/2],
+            [selectRect.x + selectRect.w, selectRect.y + selectRect.h],
+            [selectRect.x + selectRect.w/2, selectRect.y + selectRect.h],
+            [selectRect.x, selectRect.y + selectRect.h],
+            [selectRect.x, selectRect.y + selectRect.h/2]
+        ];
+        pts.forEach(p => {
+            ctx.fillRect(p[0]-hz, p[1]-hz, hz*2, hz*2);
+            ctx.strokeRect(p[0]-hz, p[1]-hz, hz*2, hz*2);
+        });
+        ctx.restore();
+    }
+
+    document.getElementById('sb-size').textContent   = `畫板: ${canvas.width}×${canvas.height}`;
+    document.getElementById('sb-layers').textContent = `圖層: ${layers.length}`;
+}
+
+// ============================================================
+// 6. 圖層列表 UI
+// ============================================================
+function updateUI() {
+    layerListEl.innerHTML = '';
+    for (let i = layers.length - 1; i >= 0; i--) {
+        const l = layers[i];
+        const div = document.createElement('div');
+        div.className = `layer-item${i === activeIndex ? ' active':''}${l.parentId ? ' child':''}${l.type==='group'?' group-type':''}`;
+        const icon = { img:'[I]', text:'[T]', draw:'[D]', pen:'[P]', group:'📁', solid:'[S]' }[l.type] || '[?]';
+        div.innerHTML = `
+          <button class="sm-btn ${l.visible?'on':''}" onclick="toggleVisible(${i});event.stopPropagation()">👁</button>
+          <span class="l-icon">${icon}</span>
+          <span class="layer-name" title="${l.name}">${l.name}${l.hasMask?'🌗':''}</span>
+          <button class="sm-btn" onclick="moveLayerOrder(${i},1);event.stopPropagation()">▲</button>
+          <button class="sm-btn" onclick="moveLayerOrder(${i},-1);event.stopPropagation()">▼</button>
+        `;
+        div.addEventListener('click', () => selectLayer(i));
+        layerListEl.appendChild(div);
+    }
+}
+
+function toggleVisible(idx) {
+    layers[idx].visible = !layers[idx].visible;
+    updateUI(); render();
+}
+
+// ============================================================
+// 7. 模式切換
+// ============================================================
+function setMode(m) {
+    mode = m;
+    document.querySelectorAll('#topbar .tb-btn[id^=mode-]').forEach(b => b.classList.remove('active'));
+    const btn = document.getElementById('mode-' + m);
+    if (btn) btn.classList.add('active');
+
+    const cursors = { move:'move', select:'crosshair', brush:'crosshair', eraser:'cell',
+                      clone:'copy', repair:'crosshair',
+                      pen:'crosshair', mask:'crosshair', text:'text', eyedrop:'zoom-in' };
+    canvas.style.cursor = cursors[m] || 'default';
+
+    // 顯示對應設定面板
+    document.getElementById('brush-settings').style.display = ['brush','pencil','eraser','mask','clone','blur','repair'].includes(m) ? 'block' : 'none';
+    document.getElementById('pen-settings').style.display   = m === 'pen'  ? 'block' : 'none';
+    document.getElementById('text-settings').style.display  = m === 'text' ? 'block' : 'none';
+
+    const modeNames = {move:'移動',select:'選取 / 裁剪',brush:'筆刷',pencil:'鉛筆',eraser:'橡皮',wand:'魔力擦',bucket:'填色',clone:'仿製',repair:'修復',blur:'模糊',pen:'鋼筆',mask:'遮罩',text:'文字',eyedrop:'取色'};
+    document.getElementById('sb-mode').textContent = `模式: ${modeNames[m] || m}`;
+
+    if (m !== 'pen') { penNodes = []; }
+    // 切換到其他模式時提交仿製或模糊
+    if (!['clone','blur'].includes(m) && stampCanvas) { commitStamp(); }
+    if (m !== 'repair') { clearRepair(); }
+    if (m !== 'select' && typeof clearSelect === 'function') { clearSelect(); }
+    render();
+}
+
+// ============================================================
+// 8. 鋼筆工具
+// ============================================================
+function commitPen() {
+    if (penNodes.length < 2) { alert('至少需要 2 個節點'); return; }
+    const l = baseLayer('pen', '鋼筆路徑');
+    l.color = colorPicker.value;
+    l.penWidth = +document.getElementById('pen-width').value;
+    l.penClose = document.getElementById('pen-close').checked;
+    l.penNodes = [...penNodes];
+    l.x = 0; l.y = 0;
+    layers.push(l);
+    penNodes = [];
+    saveHistory(); selectLayer(layers.length - 1);
+}
+function clearPen() { penNodes = []; render(); }
+
+// ============================================================
+// 9. 筆刷預覽
+// ============================================================
+function updateBrushPreview() {
+    const sz   = +document.getElementById('brush-size').value;
+    const hard = +document.getElementById('brush-hard').value;
+    const op   = +document.getElementById('brush-op').value;
+    document.getElementById('brush-size-val').textContent = sz;
+    document.getElementById('brush-hard-val').textContent = hard;
+    document.getElementById('brush-op-val').textContent   = op;
+    const prev = document.getElementById('brush-preview');
+    prev.style.width  = Math.min(sz, 46) + 'px';
+    prev.style.height = Math.min(sz, 46) + 'px';
+    prev.style.opacity = op / 100;
+    prev.style.filter  = hard < 80 ? `blur(${(100-hard)/20}px)` : 'none';
+    prev.style.background = colorPicker.value;
+}
+colorPicker.addEventListener('input', updateBrushPreview);
+updateBrushPreview();
+
+// ============================================================
+// 10. 畫布互動（滑鼠事件）
+// ============================================================
+function getMouse(e) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+        x: (e.clientX - rect.left) * (canvas.width  / rect.width),
+        y: (e.clientY - rect.top)  * (canvas.height / rect.height)
+    };
+}
+
+// 取得筆刷參數
+function getBrushParams() {
+    return {
+        size:    +document.getElementById('brush-size').value,
+        hardness:+document.getElementById('brush-hard').value,
+        opacity: +document.getElementById('brush-op').value,
+        color:   colorPicker.value,
+    };
+}
+
+canvas.addEventListener('mousedown', (e) => {
+    const m = getMouse(e);
+
+    if (mode === 'pen') {
+        penNodes.push({ x: m.x, y: m.y });
+        render(); return;
+    }
+
+    if (mode === 'text') {
+        const textContent = prompt('輸入文字：', '文字');
+        if (!textContent) return;
+        const l = baseLayer('text', '文字');
+        l.text = textContent; l.fontSize = 50; l.color = colorPicker.value;
+        l.fontFamily = 'Courier New'; l.x = m.x; l.y = m.y;
+        layers.push(l); saveHistory(); selectLayer(layers.length - 1);
+        return;
+    }
+
+    if (mode === 'eyedrop') {
+        const px = ctx.getImageData(Math.round(m.x), Math.round(m.y), 1, 1).data;
+        const hex = '#' + [px[0],px[1],px[2]].map(v=>v.toString(16).padStart(2,'0')).join('');
+        colorPicker.value = hex;
+        updateBrushPreview();
+        return;
+    }
+
+    // ─── 仿製圖章 ───────────────────────────────────
+    if (mode === 'clone') {
+        if (e.altKey) {
+            // Alt+Click：設定取樣來源並拍快照
+            cloneSource = { x: m.x, y: m.y };
+            cloneFirstPt = null;
+            // 拍整張畫布快照（包含所有圖層渲染結果）
+            cloneSnapshot = document.createElement('canvas');
+            cloneSnapshot.width = canvas.width; cloneSnapshot.height = canvas.height;
+            cloneSnapshot.getContext('2d').drawImage(canvas, 0, 0);
+            document.getElementById('sb-mode').textContent = `仿製圖章 ✓ 來源已設定 (${Math.round(m.x)},${Math.round(m.y)}) — 拖曳開始塗蓋`;
+            return;
+        }
+        if (!cloneSource || !cloneSnapshot) {
+            document.getElementById('sb-mode').textContent = '⚠ 請先 Alt+Click 設定取樣來源';
+            return;
+        }
+        isDragging = true;
+        cloneFirstPt = { x: m.x, y: m.y };
+        // 建或清空仿製 offscreen canvas
+        if (!stampCanvas || stampCanvas.width !== canvas.width || stampCanvas.height !== canvas.height) {
+            stampCanvas = document.createElement('canvas');
+            stampCanvas.width = canvas.width; stampCanvas.height = canvas.height;
+            stampCtx = stampCanvas.getContext('2d');
+        }
+        return;
+    }
+
+    if (mode === 'wand') {
+        if (activeIndex > -1 && layers[activeIndex].type === 'img') {
+            if (layers[activeIndex].lockImage || layers[activeIndex].lockAll) return;
+            executeMagicEraser(layers[activeIndex], m.x, m.y);
+        } else alert('請選取一個圖片圖層');
+        return;
+    }
+    if (mode === 'bucket') {
+        if (activeIndex > -1 && layers[activeIndex].type === 'img') {
+            if (layers[activeIndex].lockImage || layers[activeIndex].lockAll) return;
+            executePaintBucket(layers[activeIndex], m.x, m.y);
+        } else alert('請選取一個圖片圖層');
+        return;
+    }
+    if (mode === 'blur') {
+        if (activeIndex > -1 && (layers[activeIndex].lockImage || layers[activeIndex].lockAll)) return;
+        isDragging = true;
+        const off = document.createElement('canvas'); off.width = canvas.width; off.height = canvas.height;
+        const oCtx = off.getContext('2d'); oCtx.drawImage(canvas, 0, 0);
+        const blurred = document.createElement('canvas'); blurred.width = canvas.width; blurred.height = canvas.height;
+        const bCtx = blurred.getContext('2d'); bCtx.filter = `blur(${Math.max(2, +document.getElementById('brush-size').value / 5)}px)`;
+        bCtx.drawImage(off, 0, 0); cloneSnapshot = blurred;
+        if (!stampCanvas || stampCanvas.width !== canvas.width) {
+            stampCanvas = document.createElement('canvas'); stampCanvas.width = canvas.width; stampCanvas.height = canvas.height; stampCtx = stampCanvas.getContext('2d');
+        }
+        const brushR = (+document.getElementById('brush-size').value) / 2;
+        stampCtx.save(); stampCtx.beginPath(); stampCtx.arc(m.x, m.y, brushR, 0, Math.PI * 2);
+        stampCtx.clip(); stampCtx.globalAlpha = (+document.getElementById('brush-op').value) / 100;
+        stampCtx.drawImage(cloneSnapshot, 0, 0); stampCtx.restore(); render(); return;
+    }
+
+    // ─── 智慧修復塗抹 ────────────────────────────────
+    if (mode === 'repair') {
+        if (activeIndex > -1 && (layers[activeIndex].lockImage || layers[activeIndex].lockAll)) return;
+        isDragging = true;
+        repairPath = [{ x: m.x, y: m.y }];
+        document.getElementById('repair-hint').style.display = 'none';
+        return;
+    }
+
+    // ─── 選取框 ────────────────────────────────
+    if (mode === 'select') {
+        if (selectRect && selectRect.w > 0) {
+            const handle = typeof getSelectHandle === 'function' ? getSelectHandle(m) : null;
+            if (handle) {
+                isDragging = true; selectDragHandle = handle; selectStart = { x: m.x, y: m.y }; selectOrigRect = { ...selectRect };
+                return;
+            }
+        }
+        isDragging = true; selectDragHandle = 'new'; selectStart = { x: m.x, y: m.y }; selectRect = { x: m.x, y: m.y, w: 0, h: 0 };
+        document.getElementById('select-hint').style.display = 'none'; return;
+    }
+
+    if (mode === 'move') {
+        if (activeIndex === -1 || layers[activeIndex].lockPos || layers[activeIndex].lockAll) return;
+        isDragging = true;
+        dragOffset = { x: m.x - layers[activeIndex].x, y: m.y - layers[activeIndex].y };
+    }
+    else if (mode === 'brush' || mode === 'pencil') {
+        if (activeIndex > -1 && (layers[activeIndex].lockImage || layers[activeIndex].lockAll)) return;
+        isDragging = true;
+        if (activeIndex === -1 || layers[activeIndex].type !== 'draw') { addDrawLayer(); }
+        const bp = getBrushParams();
+        layers[activeIndex].paths.push([{ x: m.x - layers[activeIndex].x, y: m.y - layers[activeIndex].y, color: bp.color, size: bp.size, opacity: bp.opacity, isPencil: mode==='pencil' }]);
+    }
+    else if (mode === 'eraser') {
+        if (activeIndex === -1 || layers[activeIndex].type !== 'draw' || layers[activeIndex].lockImage || layers[activeIndex].lockAll) return;
+        isDragging = true;
+        layers[activeIndex].paths.push([{ x: m.x, y: m.y, color: document.getElementById('bg-color').value, size: +document.getElementById('brush-size').value * 2, opacity: 100 }]);
+    }
+    else if (mode === 'mask') {
+        if (activeIndex === -1 || layers[activeIndex].lockAll) return;
+        isDragging = true;
+        if (!layers[activeIndex].hasMask) layers[activeIndex].hasMask = true;
+        layers[activeIndex].maskPaths.push([{ x: m.x - layers[activeIndex].x, y: m.y - layers[activeIndex].y }]);
+    }
+});
+
+window.addEventListener('mousemove', (e) => {
+    const m = getMouse(e);
+    document.getElementById('sb-pos').textContent = `X:${Math.round(m.x)} Y:${Math.round(m.y)}`;
+    if (!isDragging) return;
+
+    // ─── 仿製圖章塗抹 ───────────────────────────────
+    if (mode === 'clone') {
+        if (!cloneFirstPt || !cloneSnapshot || !stampCtx) return;
+        const dx = m.x - cloneFirstPt.x;
+        const dy = m.y - cloneFirstPt.y;
+        const srcX = cloneSource.x + dx;
+        const srcY = cloneSource.y + dy;
+        const brushR = (+document.getElementById('brush-size').value) / 2;
+        // 以圓形 clip 從快照取像素貼到 stamp canvas
+        stampCtx.save();
+        stampCtx.beginPath();
+        stampCtx.arc(m.x, m.y, brushR, 0, Math.PI * 2);
+        stampCtx.clip();
+        stampCtx.globalAlpha = (+document.getElementById('brush-op').value) / 100;
+        stampCtx.drawImage(cloneSnapshot, srcX - m.x, srcY - m.y);
+        stampCtx.restore();
+        render();
+        return;
+    }
+
+    // ─── 模糊塗抹 ───────────────────────────────
+    if (mode === 'blur') {
+        if (!cloneSnapshot || !stampCtx) return;
+        const brushR = (+document.getElementById('brush-size').value) / 2;
+        stampCtx.save(); stampCtx.beginPath(); stampCtx.arc(m.x, m.y, brushR, 0, Math.PI * 2);
+        stampCtx.clip(); stampCtx.globalAlpha = (+document.getElementById('brush-op').value) / 100;
+        stampCtx.drawImage(cloneSnapshot, 0, 0); stampCtx.restore(); render(); return;
+    }
+
+    // ─── 修復塗抹拖曳 ───────────────────────────────
+    if (mode === 'repair') {
+        if (repairPath) { repairPath.push({ x: m.x, y: m.y }); render(); }
+        return;
+    }
+
+    // ─── 選取拖曳 ───────────────────────────────
+    if (mode === 'select') {
+        if (selectDragHandle === 'new') {
+            selectRect = {
+                x: Math.min(selectStart.x, m.x),
+                y: Math.min(selectStart.y, m.y),
+                w: Math.abs(m.x - selectStart.x),
+                h: Math.abs(m.y - selectStart.y)
+            };
+        } else if (selectOrigRect) {
+            let nx = selectOrigRect.x;
+            let ny = selectOrigRect.y;
+            let nw = selectOrigRect.w;
+            let nh = selectOrigRect.h;
+            const dx = m.x - selectStart.x;
+            const dy = m.y - selectStart.y;
+            
+            if (selectDragHandle.includes('e')) nw = selectOrigRect.w + dx;
+            if (selectDragHandle.includes('s')) nh = selectOrigRect.h + dy;
+            if (selectDragHandle.includes('w')) { nw = selectOrigRect.w - dx; nx = selectOrigRect.x + dx; }
+            if (selectDragHandle.includes('n')) { nh = selectOrigRect.h - dy; ny = selectOrigRect.y + dy; }
+            if (selectDragHandle === 'move') { nx = selectOrigRect.x + dx; ny = selectOrigRect.y + dy; }
+            
+            let fx = nw < 0 ? nx + nw : nx;
+            let fy = nh < 0 ? ny + nh : ny;
+            let fw = Math.abs(nw);
+            let fh = Math.abs(nh);
+            selectRect = { x: fx, y: fy, w: fw, h: fh };
+        }
+        render();
+        return;
+    }
+
+    if (activeIndex === -1) return;
+
+    if (mode === 'move') {
+        layers[activeIndex].x = m.x - dragOffset.x;
+        layers[activeIndex].y = m.y - dragOffset.y;
+        render();
+    }
+    else if (mode === 'brush' || mode === 'pencil' || mode === 'eraser') {
+        if (layers[activeIndex].type !== 'draw') return;
+        const l = layers[activeIndex];
+        const bp = getBrushParams();
+        const currentPath = l.paths[l.paths.length - 1];
+        currentPath.push({ x: m.x - l.x, y: m.y - l.y, color: mode==='eraser' ? document.getElementById('bg-color').value : bp.color, size: bp.size, opacity: bp.opacity, isPencil: mode==='pencil' });
+        render();
+    }
+    else if (mode === 'mask') {
+        const l = layers[activeIndex];
+        const currentMask = l.maskPaths[l.maskPaths.length - 1];
+        currentMask.push({ x: m.x - l.x, y: m.y - l.y });
+        render();
+    }
+});
+
+window.addEventListener('mouseup', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    if (mode === 'repair' && repairPath.length > 3) {
+        applySpotHealing();
+    } else if (mode === 'repair') {
+        repairPath = []; render();
+    }
+    if (mode === 'select' && selectRect && selectRect.w > 5 && selectRect.h > 5) {
+        document.getElementById('select-hint').style.display = 'flex';
+    }
+    if (!['pen','eyedrop','text','clone','blur','repair','select'].includes(mode)) saveHistory();
+});
+
+// 右鍵：鋼筆模式下寫入圖層
+canvas.addEventListener('contextmenu', e => {
+    if (mode === 'pen' && penNodes.length >= 2) {
+        e.preventDefault();
+        commitPen();
+    }
+});
+
+// 滑鼠移動顯示座標
+canvas.addEventListener('mousemove', e => {
+    const m = getMouse(e);
+    document.getElementById('sb-pos').textContent = `X:${Math.round(m.x)} Y:${Math.round(m.y)}`;
+    
+    if (mode === 'select' && !isDragging) {
+        if (selectRect && selectRect.w > 0 && typeof getSelectHandle === 'function') {
+            const handle = getSelectHandle(m);
+            const cursors = {
+                'nw': 'nwse-resize', 'se': 'nwse-resize',
+                'ne': 'nesw-resize', 'sw': 'nesw-resize',
+                'n': 'ns-resize', 's': 'ns-resize',
+                'e': 'ew-resize', 'w': 'ew-resize',
+                'move': 'move'
+            };
+            canvas.style.cursor = handle ? cursors[handle] : 'crosshair';
+        } else {
+            canvas.style.cursor = 'crosshair';
+        }
+    }
+});
+
+// 畫布縮放套用
+function applyZoom() {
+    canvas.style.transform = `scale(${zoom})`;
+    const wrap = document.getElementById('canvas-wrap');
+    wrap.style.width = Math.round(canvas.width * zoom) + 'px';
+    wrap.style.height = Math.round(canvas.height * zoom) + 'px';
+    const sbZoom = document.getElementById('sb-zoom');
+    if(sbZoom) sbZoom.textContent = `縮放: ${Math.round(zoom*100)}%`;
+}
+
+// 滾輪縮放畫布
+canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    zoom = Math.max(0.1, Math.min(5, zoom + (e.deltaY < 0 ? 0.1 : -0.1)));
+    applyZoom();
+}, { passive: false });
+
+// ============================================================
+// 11. 畫板尺寸調整
+// ============================================================
+function resizeCanvas() {
+    const w = Math.max(1, +document.getElementById('cnv-w').value || 800);
+    const h = Math.max(1, +document.getElementById('cnv-h').value || 600);
+    canvas.width = w; canvas.height = h;
+    if (typeof applyZoom === 'function') applyZoom();
+    saveHistory(); render();
+}
+
+// 將畫布對齊至目前選取圖片圖層的原始尺寸
+function fitToLayer() {
+    if (activeIndex === -1) { alert('請先選取一個圖片圖層'); return; }
+    const l = layers[activeIndex];
+    if (l.type !== 'img') { alert('請選取圖片圖層（[I]）才能配合尺寸'); return; }
+    canvas.width  = Math.round(l.origW * (l.scale / 100));
+    canvas.height = Math.round(l.origH * (l.scale / 100));
+    l.x = 0; l.y = 0;
+    document.getElementById('cnv-w').value = canvas.width;
+    document.getElementById('cnv-h').value = canvas.height;
+    if (typeof applyZoom === 'function') applyZoom();
+    saveHistory(); render();
+}
+
+// ============================================================
+// 12. 匯出與尺寸調整
+// ============================================================
+function openExportModal(fmt) {
+    document.getElementById('export-format').value = fmt;
+    document.getElementById('export-w').value = canvas.width;
+    document.getElementById('export-h').value = canvas.height;
+    document.getElementById('export-modal').dataset.origW = canvas.width;
+    document.getElementById('export-modal').dataset.origH = canvas.height;
+    document.getElementById('export-modal').style.display = 'flex';
+}
+
+function updateExportAspect(changed) {
+    if (!document.getElementById('export-aspect').checked) return;
+    const origW = +document.getElementById('export-modal').dataset.origW;
+    const origH = +document.getElementById('export-modal').dataset.origH;
+    if (origH === 0) return;
+    const ratio = origW / origH;
+    if (changed === 'w') {
+        const w = +document.getElementById('export-w').value;
+        if (w > 0) document.getElementById('export-h').value = Math.max(1, Math.round(w / ratio));
+    } else {
+        const h = +document.getElementById('export-h').value;
+        if (h > 0) document.getElementById('export-w').value = Math.max(1, Math.round(h * ratio));
+    }
+}
+
+function doExport() {
+    const format = document.getElementById('export-format').value;
+    const expW = Math.max(1, +document.getElementById('export-w').value);
+    const expH = Math.max(1, +document.getElementById('export-h').value);
+    document.getElementById('export-modal').style.display = 'none';
+
+    if (expW === canvas.width && expH === canvas.height) {
+        exportImgOrig(format, canvas);
+        return;
+    }
+
+    // 利用離屏 Canvas 進行非破壞性重採樣縮放
+    const offC = document.createElement('canvas');
+    offC.width = expW; offC.height = expH;
+    const offCtx = offC.getContext('2d');
+    offCtx.imageSmoothingEnabled = true;
+    offCtx.imageSmoothingQuality = 'high';
+    offCtx.drawImage(canvas, 0, 0, expW, expH);
+    exportImgOrig(format, offC);
+}
+
+function exportImgOrig(format, srcCanvas) {
+    const link = document.createElement('a');
+    link.download = `dv_export_${Date.now()}.${format}`;
+    link.href = format === 'jpg'
+        ? srcCanvas.toDataURL('image/jpeg', 0.95)
+        : srcCanvas.toDataURL('image/png');
+    link.click();
+}
+
+// ============================================================
+// 14. 仿製圖章工具
+// ============================================================
+
+// 將 stampCanvas 提交為一個新的圖片圖層
+function commitStamp() {
+    if (!stampCanvas) return;
+    const img = new Image();
+    img.onload = () => {
+        const l = baseLayer('img', '仿製修復');
+        l.img = img; l.origW = stampCanvas.width; l.origH = stampCanvas.height;
+        l.currentW = stampCanvas.width; l.currentH = stampCanvas.height;
+        l.x = 0; l.y = 0;
+        layers.push(l);
+        stampCanvas = null; stampCtx = null; cloneFirstPt = null;
+        saveHistory(); updateUI(); render();
+    };
+    img.src = stampCanvas.toDataURL();
+}
+
+// ============================================================
+// 15. 智慧修復 (Inpainting)
+// ============================================================
+
+function clearRepair() {
+    repairPath = [];
+    document.getElementById('repair-hint').style.display = 'none';
+    render();
+}
+
+// ============================================================
+// 選取與裁剪 (Select & Crop)
+// ============================================================
+function getSelectHandle(m) {
+    if (!selectRect || selectRect.w === 0) return null;
+    const { x, y, w, h } = selectRect;
+    const d = 8 / zoom; // Handle grab distance
+    const cx = Math.max(m.x, x - d) === Math.min(m.x, x + w + d);
+    const cy = Math.max(m.y, y - d) === Math.min(m.y, y + h + d);
+    if (!cx || !cy) return null;
+    
+    const onW = Math.abs(m.x - x) <= d;
+    const onE = Math.abs(m.x - (x + w)) <= d;
+    const onN = Math.abs(m.y - y) <= d;
+    const onS = Math.abs(m.y - (y + h)) <= d;
+    
+    if (onN && onW) return 'nw';
+    if (onN && onE) return 'ne';
+    if (onS && onW) return 'sw';
+    if (onS && onE) return 'se';
+    if (onN) return 'n';
+    if (onS) return 's';
+    if (onE) return 'e';
+    if (onW) return 'w';
+    
+    if (m.x >= x && m.x <= x + w && m.y >= y && m.y <= y + h) return 'move';
+    return null;
+}
+
+function clearSelect() {
+    selectRect = null; selectDragHandle = null;
+    const hint = document.getElementById('select-hint');
+    if (hint) hint.style.display = 'none';
+    render();
+}
+
+function applyCrop() {
+    if (!selectRect || selectRect.w < 2 || selectRect.h < 2) return;
+    
+    // 平移所有圖層
+    layers.forEach(l => {
+        l.x -= selectRect.x;
+        l.y -= selectRect.y;
+    });
+    
+    // 改變畫板尺寸
+    canvas.width = Math.round(selectRect.w);
+    canvas.height = Math.round(selectRect.h);
+    document.getElementById('cnv-w').value = canvas.width;
+    document.getElementById('cnv-h').value = canvas.height;
+    if (typeof applyZoom === 'function') applyZoom();
+    
+    clearSelect();
+    saveHistory(); updateUI(); render();
+}
+
+// 核心：塗抹式擴散修復（Spot Healing Brush）
+function applySpotHealing() {
+    if (!repairPath || repairPath.length === 0) return;
+    document.getElementById('loading-overlay').style.display = 'flex';
+    
+    // 提前清除畫面上的粉紅色修復預覽筆觸，再抓取實際畫面資料
+    const currentPath = [...repairPath];
+    repairPath = [];
+    render();
+
+    setTimeout(() => {
+        const offM = document.createElement('canvas');
+        offM.width = canvas.width; offM.height = canvas.height;
+        const ctxM = offM.getContext('2d');
+        ctxM.lineWidth = Math.max(1, +document.getElementById('brush-size').value);
+        ctxM.lineCap = 'round'; ctxM.lineJoin = 'round';
+        ctxM.beginPath();
+        currentPath.forEach((p,i) => i===0 ? ctxM.moveTo(p.x, p.y) : ctxM.lineTo(p.x, p.y));
+        ctxM.stroke();
+        
+        const maskData = ctxM.getImageData(0,0, canvas.width, canvas.height).data;
+        const mask = new Uint8Array(canvas.width * canvas.height);
+        let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
+        for (let i = 0; i < maskData.length; i += 4) {
+            if (maskData[i+3] > 10) {
+                const px = (i/4) % canvas.width;
+                const py = Math.floor((i/4) / canvas.width);
+                mask[py * canvas.width + px] = 1;
+                if (px < minX) minX = px; if (px > maxX) maxX = px;
+                if (py < minY) minY = py; if (py > maxY) maxY = py;
+            }
+        }
+        if (maxX < minX || maxY < minY) { 
+             document.getElementById('loading-overlay').style.display = 'none';
+             return; 
+        }
+        minX = Math.max(0, minX - 10); minY = Math.max(0, minY - 10);
+        maxX = Math.min(canvas.width-1, maxX + 10); maxY = Math.min(canvas.height-1, maxY + 10);
+        
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const d = imgData.data; const W = canvas.width;
+        
+        // 增強 iterations 到 150 次以完全塗抹掉原先物件
+        for (let iter = 0; iter < 150; iter++) {
+            for (let py = minY; py <= maxY; py++) {
+                for (let px = minX; px <= maxX; px++) {
+                    if (!mask[py * W + px]) continue;
+                    let r=0, g=0, b=0, cnt=0;
+                    [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([ddx,ddy]) => {
+                        const nx = px+ddx, ny = py+ddy;
+                        if (nx>=0 && nx<W && ny>=0 && ny<canvas.height) {
+                            const idx=(ny*W+nx)*4; r+=d[idx]; g+=d[idx+1]; b+=d[idx+2]; cnt++;
+                        }
+                    });
+                    if (cnt>0) {
+                        const idx=(py*W+px)*4; d[idx]=r/cnt; d[idx+1]=g/cnt; d[idx+2]=b/cnt;
+                    }
+                }
+            }
+        }
+        
+        const offC = document.createElement('canvas'); offC.width = canvas.width; offC.height = canvas.height;
+        offC.getContext('2d').putImageData(imgData, 0, 0);
+        
+        // 只提取被修復的部分作為獨立圖層
+        const extractOff = document.createElement('canvas'); extractOff.width = canvas.width; extractOff.height = canvas.height;
+        const extractCtx = extractOff.getContext('2d');
+        extractCtx.putImageData(imgData, 0, 0);
+        extractCtx.globalCompositeOperation = 'destination-in';
+        extractCtx.drawImage(offM, 0, 0);
+
+        const img = new Image();
+        img.onload = () => {
+            const l = baseLayer('img', '污點修復');
+            l.img = img; l.origW = extractOff.width; l.origH = extractOff.height;
+            l.currentW = extractOff.width; l.currentH = extractOff.height; l.x = 0; l.y = 0;
+            layers.push(l);
+            document.getElementById('loading-overlay').style.display = 'none';
+            saveHistory(); selectLayer(layers.length - 1);
+        };
+        img.src = extractOff.toDataURL();
+    }, 20);
+}
+
+function executeMagicEraser(layer, mouseX, mouseY) {
+    const lx = (mouseX - layer.x) / (layer.scale/100); const ly = (mouseY - layer.y) / (layer.scale/100);
+    if (lx < 0 || ly < 0 || lx >= layer.origW || ly >= layer.origH) return;
+    const offC = document.createElement('canvas'); offC.width = layer.origW; offC.height = layer.origH;
+    const ctx = offC.getContext('2d'); ctx.drawImage(layer.img, 0, 0);
+    const imgData = ctx.getImageData(0,0, offC.width, offC.height); const d = imgData.data;
+    const startX = Math.floor(lx), startY = Math.floor(ly);
+    const startIdx = (startY * offC.width + startX) * 4;
+    if (d[startIdx+3] === 0) return;
+    const sr = d[startIdx], sg = d[startIdx+1], sb = d[startIdx+2];
+    const tol = 30; const match = (i) => Math.abs(d[i]-sr)<=tol && Math.abs(d[i+1]-sg)<=tol && Math.abs(d[i+2]-sb)<=tol && d[i+3]>0;
+    const stack = [[startX, startY]]; const W = offC.width, H = offC.height;
+    const vis = new Uint8Array(W * H); vis[startY * W + startX] = 1;
+    while(stack.length) {
+        const [x,y] = stack.pop(); const idx = (y * W + x) * 4; d[idx+3] = 0;
+        [[-1,0],[1,0],[0,-1],[0,1]].forEach(([dx,dy]) => {
+            const nx=x+dx, ny=y+dy;
+            if (nx>=0 && nx<W && ny>=0 && ny<H && !vis[ny*W+nx] && match((ny*W+nx)*4)) {
+                vis[ny*W+nx] = 1; stack.push([nx,ny]);
+            }
+        });
+    }
+    document.getElementById('loading-overlay').style.display = 'flex';
+    ctx.putImageData(imgData, 0, 0); const img = new Image();
+    img.onload = () => { layer.img = img; document.getElementById('loading-overlay').style.display = 'none'; saveHistory(); render(); };
+    img.src = offC.toDataURL();
+}
+
+function executePaintBucket(layer, mouseX, mouseY) {
+    const lx = (mouseX - layer.x) / (layer.scale/100); const ly = (mouseY - layer.y) / (layer.scale/100);
+    if (lx < 0 || ly < 0 || lx >= layer.origW || ly >= layer.origH) return;
+    const offC = document.createElement('canvas'); offC.width = layer.origW; offC.height = layer.origH;
+    const ctx = offC.getContext('2d'); ctx.drawImage(layer.img, 0, 0);
+    const imgData = ctx.getImageData(0,0, offC.width, offC.height); const d = imgData.data;
+    const startX = Math.floor(lx), startY = Math.floor(ly);
+    const startIdx = (startY * offC.width + startX) * 4;
+    const sr = d[startIdx], sg = d[startIdx+1], sb = d[startIdx+2];
+    const tol = 30; const match = (i) => Math.abs(d[i]-sr)<=tol && Math.abs(d[i+1]-sg)<=tol && Math.abs(d[i+2]-sb)<=tol;
+    const hex = colorPicker.value;
+    const fr = parseInt(hex.slice(1,3), 16), fg = parseInt(hex.slice(3,5), 16), fb = parseInt(hex.slice(5,7), 16);
+    const stack = [[startX, startY]]; const W = offC.width, H = offC.height;
+    const vis = new Uint8Array(W * H); vis[startY * W + startX] = 1;
+    while(stack.length) {
+        const [x,y] = stack.pop(); const idx = (y*W+x)*4;
+        d[idx] = fr; d[idx+1] = fg; d[idx+2] = fb; d[idx+3] = 255;
+        [[-1,0],[1,0],[0,-1],[0,1]].forEach(([dx,dy]) => {
+            const nx=x+dx, ny=y+dy;
+            if (nx>=0 && nx<W && ny>=0 && ny<H && !vis[ny*W+nx] && match((ny*W+nx)*4)) {
+                vis[ny*W+nx] = 1; stack.push([nx,ny]);
+            }
+        });
+    }
+    document.getElementById('loading-overlay').style.display = 'flex';
+    ctx.putImageData(imgData, 0, 0); const img = new Image();
+    img.onload = () => { layer.img = img; document.getElementById('loading-overlay').style.display = 'none'; saveHistory(); render(); };
+    img.src = offC.toDataURL();
+}
+
+// ============================================================
+// 16. 分割圖片進階版 (預覽格線 + 切片檢視)
+// ============================================================
+let currentSplitDataURLs = [];
+
+function openSplitModal() {
+    document.getElementById('split-modal').style.display = 'flex';
+    document.getElementById('split-dl-btn').disabled = true;
+    document.getElementById('split-result-grid').style.display = 'none';
+    document.getElementById('split-canvas-preview').style.display = 'block';
+    updateSplitPreviewRealtime();
+}
+
+function closeSplitModal() {
+    document.getElementById('split-modal').style.display = 'none';
+    currentSplitDataURLs = [];
+}
+
+function updateSplitPreviewRealtime() {
+    document.getElementById('split-result-grid').style.display = 'none';
+    const pc = document.getElementById('split-canvas-preview');
+    pc.style.display = 'block';
+    pc.width = canvas.width;
+    pc.height = canvas.height;
+    const ctxP = pc.getContext('2d');
+    
+    // 繪製原圖
+    ctxP.drawImage(canvas, 0, 0);
+
+    // 取得參數
+    const ox = +document.getElementById('split-ox').value || 0;
+    const oy = +document.getElementById('split-oy').value || 0;
+    let cols = Math.max(1, +document.getElementById('split-cols').value || 1);
+    let rows = Math.max(1, +document.getElementById('split-rows').value || 1);
+    
+    const manW = document.getElementById('split-w').value;
+    const manH = document.getElementById('split-h').value;
+
+    let cellW = manW ? +manW : (canvas.width - ox) / cols;
+    let cellH = manH ? +manH : (canvas.height - oy) / rows;
+    if (cellW <= 0) cellW = 10;
+    if (cellH <= 0) cellH = 10;
+    
+    if (manW) cols = Math.floor((canvas.width - ox) / cellW) + 1; // 預留邊緣彈性
+    if (manH) rows = Math.floor((canvas.height - oy) / cellH) + 1;
+
+    // 繪製粉紅格線
+    ctxP.save();
+    ctxP.strokeStyle = '#ff00ff';
+    ctxP.lineWidth = Math.max(1, 2 / zoom);
+    ctxP.setLineDash([5, 5]);
+
+    for (let r = 0; r <= rows; r++) {
+        for (let c = 0; c <= cols; c++) {
+             const x = ox + c * cellW;
+             const y = oy + r * cellH;
+             if (x <= pc.width) {
+                 ctxP.beginPath(); ctxP.moveTo(x, oy); ctxP.lineTo(x, Math.min(pc.height, oy + rows * cellH)); ctxP.stroke();
+             }
+             if (y <= pc.height) {
+                 ctxP.beginPath(); ctxP.moveTo(ox, y); ctxP.lineTo(Math.min(pc.width, ox + cols * cellW), y); ctxP.stroke();
+             }
+        }
+    }
+    ctxP.restore();
+    document.getElementById('split-dl-btn').disabled = true;
+}
+
+function generateSplitSlices() {
+    const ox = +document.getElementById('split-ox').value || 0;
+    const oy = +document.getElementById('split-oy').value || 0;
+    const manW = document.getElementById('split-w').value;
+    const manH = document.getElementById('split-h').value;
+    const ovlp = +document.getElementById('split-overlap').value || 0;
+    
+    let cols = Math.max(1, +document.getElementById('split-cols').value || 1);
+    let rows = Math.max(1, +document.getElementById('split-rows').value || 1);
+
+    let cellW = manW ? +manW : (canvas.width - ox) / cols;
+    let cellH = manH ? +manH : (canvas.height - oy) / rows;
+    
+    if (manW) cols = Math.floor((canvas.width - ox) / cellW);
+    if (manH) rows = Math.floor((canvas.height - oy) / cellH);
+
+    currentSplitDataURLs = [];
+    const gridEl = document.getElementById('split-result-grid');
+    gridEl.innerHTML = '';
+    
+    for (let r = 0; r < rows; r++) {
+        const rowDiv = document.createElement('div');
+        rowDiv.style.display = 'flex'; rowDiv.style.gap = '4px'; rowDiv.style.width = '100%'; rowDiv.style.justifyContent = 'center';
+        
+        for (let c = 0; c < cols; c++) {
+            const sx = Math.max(0, ox + c * cellW - ovlp);
+            const sy = Math.max(0, oy + r * cellH - ovlp);
+            const sw = Math.min(canvas.width - sx, cellW + (c > 0 ? ovlp : 0) + (c < cols-1 ? ovlp : 0));
+            const sh = Math.min(canvas.height - sy, cellH + (r > 0 ? ovlp : 0) + (r < rows-1 ? ovlp : 0));
+            
+            if (sw < 1 || sh < 1) continue;
+            
+            const offC = document.createElement('canvas');
+            offC.width = Math.round(sw); offC.height = Math.round(sh);
+            offC.getContext('2d').drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+            
+            const url = offC.toDataURL('image/png');
+            currentSplitDataURLs.push({ url, c, r });
+
+            const imgEl = document.createElement('img');
+            imgEl.src = url;
+            imgEl.style.border = '1px solid #45a29e';
+            imgEl.style.maxWidth = '150px';
+            imgEl.style.maxHeight = '150px';
+            imgEl.style.objectFit = 'contain';
+            imgEl.style.background = `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="10" height="10" fill="%231f2833"/><rect x="10" y="10" width="10" height="10" fill="%231f2833"/><rect x="10" width="10" height="10" fill="%230b0c10"/><rect y="10" width="10" height="10" fill="%230b0c10"/></svg>')`;
+            rowDiv.appendChild(imgEl);
+        }
+        gridEl.appendChild(rowDiv);
+    }
+
+    document.getElementById('split-canvas-preview').parentElement.style.display = 'none';
+    gridEl.style.display = 'flex';
+    document.getElementById('split-dl-btn').disabled = false;
+}
+
+function doSplitDownload() {
+    if (!currentSplitDataURLs.length) return;
+    let delay = 0;
+    currentSplitDataURLs.forEach((item) => {
+        setTimeout(() => {
+            const link = document.createElement('a');
+            link.download = `split_c${item.c+1}_r${item.r+1}.png`;
+            link.href = item.url;
+            link.click();
+        }, delay);
+        delay += 150;
+    });
+}
+
+// ============================================================
+// 13. 鍵盤快捷鍵
+// ============================================================
+document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+    const key = e.key.toLowerCase();
+    if (e.ctrlKey || e.metaKey) {
+        if (key === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+        if (key === 's') { e.preventDefault(); saveToIDB(); }
+        if (key === 'd') { e.preventDefault(); duplicateLayer(); }
+        if (key === 'e') { e.preventDefault(); exportImg('png'); }
+    } else {
+        if (key === 'v') setMode('move');
+        if (key === 'b') setMode('brush');
+        if (key === 'e') setMode('eraser');
+        if (key === 'p') setMode('pen');
+        if (key === 't') setMode('text');
+        if (key === 'i') setMode('eyedrop');
+        if (key === 's' && !e.ctrlKey) setMode('clone');   // S = 仿製圖章
+        if (key === 'r') setMode('repair');                // R = 修復
+        if (key === 'enter' && mode === 'clone') commitStamp(); // Enter 提交仿製
+        if (key === 'enter' && mode === 'repair') applyRepair(); // Enter 執行修復
+        if (key === 'escape') { clearRepair(); if(stampCanvas) commitStamp(); }
+        if (key === 'delete' || key === 'backspace') deleteActiveLayer();
+        if (key === '[') { const s = document.getElementById('brush-size'); s.value = Math.max(1,+s.value-5); updateBrushPreview(); }
+        if (key === ']') { const s = document.getElementById('brush-size'); s.value = Math.min(200,+s.value+5); updateBrushPreview(); }
+    }
+});
+
+// ============================================================
+// 初始化
+// ============================================================
+setMode('move');
+saveHistory();
+render();
+document.getElementById('brush-settings').style.display = 'none';
+document.getElementById('pen-settings').style.display   = 'none';
+document.getElementById('text-settings').style.display  = 'none';
+</script>
+</body>
+</html>

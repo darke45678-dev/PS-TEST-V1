@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PixiJS v8 互動幾何圖形測試</title>
+    <style>
+        /* 最小化排版 CSS，專注於 PixiJS 核心邏輯 */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #111;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+            color: #aaa;
+        }
+        #info {
+            margin-bottom: 12px;
+            font-size: 13px;
+            letter-spacing: 1px;
+            color: #66fcf1;
+            text-shadow: 0 0 8px #66fcf1;
+        }
+        #hint {
+            margin-top: 10px;
+            font-size: 11px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">PixiJS v8 ─ 向量幾何互動測試台</div>
+
+    <!-- 
+        ★ 透過 CDN 引入 PixiJS v8 最新穩定版
+           使用 ES Module Shims 確保瀏覽器相容性
+           CDN 來源：jsdelivr（pixi.js 官方推薦的 CDN 發布路徑）
+    -->
+    <script src="https://cdn.jsdelivr.net/npm/pixi.js@8/dist/pixi.min.js"></script>
+
+    <div id="hint">拖曳圖形移動 | 懸停變色 | 觸控支援</div>
+
+<script>
+(async () => {
+
+    // ==========================================
+    // 1. 初始化 Pixi.Application
+    // ==========================================
+    const app = new PIXI.Application();
+
+    /**
+     * ★ await app.init() 是 PixiJS v8 的新語法
+     *    v7 以前使用 new PIXI.Application({ ...options })，
+     *    v8 改為非同步初始化以支援 WebGPU renderer 的啟動流程。
+     */
+    await app.init({
+        width: 800,           // 畫布寬度
+        height: 600,          // 畫布高度
+        background: 0x1e1e1e, // 深灰色背景（十六進位色碼）
+        antialias: true,      // 啟用抗鋸齒，讓向量圖形邊緣更平滑
+        resolution: window.devicePixelRatio || 1, // 支援高 DPI 螢幕（如 Retina）
+        autoDensity: true,    // 搭配 resolution 自動調整 CSS 尺寸
+    });
+
+    /**
+     * ★ app.canvas 是 v8 的新屬性（v7 是 app.view）
+     *    將 PixiJS 產生的 <canvas> 元素插入到 body 中
+     */
+    document.body.insertBefore(app.canvas, document.getElementById('hint'));
+
+
+    // ==========================================
+    // 2. 繪製向量幾何圖形（星形 + 圓角矩形）
+    //    使用 PIXI.Graphics API
+    // ==========================================
+
+    // ─── 圖形 A：星形 ───────────────────────────────
+
+    /**
+     * ★ PIXI.Graphics 是 PixiJS 的向量繪圖物件，
+     *    使用 .star() / .roundRect() 等方法直接描述幾何形狀，
+     *    不需要 beginFill() / endFill()——v8 使用鏈式 fill() 語法。
+     */
+    const star = new PIXI.Graphics();
+
+    // 定義星形本體的顏色常數（鮮豔的金黃色系）
+    const STAR_COLOR_IDLE  = 0xf5c518; // 靜止狀態：金黃
+    const STAR_COLOR_HOVER = 0xff6b35; // 懸停狀態：亮橘
+
+    /**
+     * ★ PixiJS v8 繪圖新語法：
+     *    .star(x, y, points, radius, innerRadius, rotation)
+     *    .fill(color) 取代舊版 beginFill() / endFill()
+     */
+    star.star(0, 0, 6, 70, 30, Math.PI / 6)   // 六角星，外徑 70，內徑 30
+        .fill(STAR_COLOR_IDLE)                  // 填充顏色
+        .stroke({ width: 3, color: 0xffffff, alpha: 0.4 }); // 描邊
+
+    // 設定星形初始座標（畫布左半邊中央）
+    star.x = 250;
+    star.y = 300;
+
+    // ─── 圖形 B：圓角矩形 ──────────────────────────────
+
+    const rect = new PIXI.Graphics();
+
+    const RECT_COLOR_IDLE  = 0x00d2ff; // 靜止狀態：亮青色
+    const RECT_COLOR_HOVER = 0xaa00ff; // 懸停狀態：電紫色
+
+    /**
+     * ★ .roundRect(x, y, width, height, cornerRadius)
+     *    原點設在 (0,0) 再透過 container.pivot 偏移至中心，
+     *    讓旋轉與縮放的基準點落在圖形的幾何中心。
+     */
+    const RW = 160, RH = 100, RR = 20; // 寬、高、圓角半徑
+    rect.roundRect(-RW / 2, -RH / 2, RW, RH, RR)
+        .fill(RECT_COLOR_IDLE)
+        .stroke({ width: 3, color: 0xffffff, alpha: 0.4 });
+
+    // 設定圓角矩形初始座標（畫布右半邊中央）
+    rect.x = 570;
+    rect.y = 300;
+
+
+    // ==========================================
+    // 3. 將圖形加入舞台（Stage）
+    // ==========================================
+
+    /**
+     * ★ app.stage 是 PixiJS 場景圖的根容器（Root Container）。
+     *    所有要顯示的物件必須透過 addChild() 加入舞台或其子容器，
+     *    才會被渲染器（Renderer）處理並繪製到畫布上。
+     */
+    app.stage.addChild(star); // 將星形加入舞台
+    app.stage.addChild(rect); // 將圓角矩形加入舞台
+
+
+    // ==========================================
+    // 4. 為圖形開啟 Pointer（滑鼠/觸控）事件
+    // ==========================================
+
+    /**
+     * ★ PixiJS v8 使用 eventMode 屬性控制事件模式：
+     *    - 'none'    → 不接受任何事件（預設，效能最佳）
+     *    - 'passive' → 只接受來自父層的事件冒泡
+     *    - 'auto'    → 僅在 hitArea 命中時觸發
+     *    - 'static'  → 靜態物件，適合按鈕（不需每幀計算邊界）
+     *    - 'dynamic' → 動態物件，每幀都會重新計算 hit test（適合會移動的可互動物件）
+     *
+     *    此處使用 'static' 因為我們手動更新位置，不依賴自動 hit test 重算。
+     */
+    [star, rect].forEach(shape => {
+        shape.eventMode = 'static';
+
+        /**
+         * ★ cursor 屬性設定滑鼠游標樣式，
+         *    當 eventMode !== 'none' 時此設定才會生效。
+         */
+        shape.cursor = 'grab';
+    });
+
+
+    // ==========================================
+    // 5. 封裝 Drag & Drop 狀態管理機制
+    // ==========================================
+
+    /**
+     * 拖曳狀態物件：
+     *   target  → 當前正在被拖曳的圖形（null 表示未拖曳）
+     *   offsetX → 點擊位置與圖形原點的 X 軸偏移量
+     *   offsetY → 點擊位置與圖形原點的 Y 軸偏移量
+     */
+    const drag = { target: null, offsetX: 0, offsetY: 0 };
+
+
+    // ──────────────────────────────────────────────
+    // 工具函式：根據狀態更新圖形顏色
+    // ──────────────────────────────────────────────
+    function applyColor(shape, colorMap, state) {
+        /**
+         * ★ Graphics.clear() 清除所有已繪製的幾何與樣式，
+         *    然後重新繪製以套用新的填充色。
+         *    v8 中不能直接修改 tint 來改變 fill 顏色，
+         *    所以必須 clear + 重繪（或使用 tint 屬性做色調疊加）。
+         *
+         *    此處選擇 .tint 方式：更高效，不需重建 GPU geometry batch。
+         */
+        shape.tint = colorMap[state];
+    }
+
+    // 定義每個圖形的顏色映射表
+    const starColors = { idle: STAR_COLOR_IDLE, hover: STAR_COLOR_HOVER };
+    const rectColors = { idle: RECT_COLOR_IDLE, hover: RECT_COLOR_HOVER };
+
+    function getColorMap(shape) {
+        return shape === star ? starColors : rectColors;
+    }
+
+
+    // ──────────────────────────────────────────────
+    // 事件綁定：Hover（懸停）
+    // ──────────────────────────────────────────────
+
+    /**
+     * ★ 'pointerover' 事件：
+     *    當滑鼠游標或觸控點進入圖形的 hit area 時觸發，
+     *    同時支援 mouse 與 touch，這是 Pointer Events 的優勢。
+     */
+    [star, rect].forEach(shape => {
+
+        shape.on('pointerover', () => {
+            // 拖曳中不改變顏色，避免視覺混亂
+            if (drag.target === shape) return;
+            applyColor(shape, getColorMap(shape), 'hover');
+        });
+
+        /**
+         * ★ 'pointerout' 事件：
+         *    當游標或觸控點離開圖形範圍時觸發，恢復原始顏色。
+         */
+        shape.on('pointerout', () => {
+            if (drag.target === shape) return;
+            applyColor(shape, getColorMap(shape), 'idle');
+        });
+
+        // ──────────────────────────────────────────
+        // 事件綁定：Drag（拖曳開始）
+        // ──────────────────────────────────────────
+
+        /**
+         * ★ 'pointerdown' 事件：
+         *    滑鼠按下或觸控開始時觸發。
+         *    event.global 取得相對於舞台根座標的游標位置，
+         *    這樣不論畫布縮放比例為何，座標都是正確的。
+         */
+        shape.on('pointerdown', (event) => {
+            drag.target = shape;
+            drag.offsetX = event.global.x - shape.x;
+            drag.offsetY = event.global.y - shape.y;
+
+            // 拖曳時將游標改為「抓取中」樣式
+            shape.cursor = 'grabbing';
+
+            /**
+             * ★ zIndex 控制圖形的疊放順序（需要 sortableChildren = true）。
+             *    提高被拖曳圖形的 zIndex，確保它永遠顯示在其他圖形上方。
+             */
+            app.stage.sortableChildren = true;
+            shape.zIndex = 10;
+        });
+    });
+
+
+    // ──────────────────────────────────────────────
+    // 事件綁定：Drag Move（拖曳移動）
+    // 綁定在 app.stage 上以捕捉全域移動事件，
+    // 避免快速移動時游標跑出圖形範圍導致拖曳中斷。
+    // ──────────────────────────────────────────────
+
+    /**
+     * ★ app.stage 的 eventMode 也需設為 'static'，
+     *    才能偵測到舞台範圍內的全域事件。
+     */
+    app.stage.eventMode = 'static';
+    app.stage.hitArea = app.screen; // 將命中區域設為整個畫面
+
+    app.stage.on('pointermove', (event) => {
+        if (!drag.target) return;
+
+        /**
+         * ★ event.global 是相對於 Renderer Canvas 左上角的座標，
+         *    在沒有巢狀 Container 偏移的情況下，
+         *    可以直接用來更新圖形的 .x / .y 屬性。
+         */
+        drag.target.x = event.global.x - drag.offsetX;
+        drag.target.y = event.global.y - drag.offsetY;
+    });
+
+
+    // ──────────────────────────────────────────────
+    // 事件綁定：Drag End（拖曳結束）
+    // ──────────────────────────────────────────────
+
+    /**
+     * ★ 'pointerup' 與 'pointerupoutside' 都需監聽：
+     *    - pointerup：游標在圖形範圍內放開
+     *    - pointerupoutside：游標移出圖形後才放開（防止卡住）
+     */
+    app.stage.on('pointerup',        onDragEnd);
+    app.stage.on('pointerupoutside', onDragEnd);
+
+    function onDragEnd() {
+        if (!drag.target) return;
+
+        drag.target.cursor = 'grab';
+        drag.target.zIndex = 0;
+        applyColor(drag.target, getColorMap(drag.target), 'idle');
+
+        drag.target = null; // 清除拖曳目標，釋放狀態
+    }
+
+
+    // ==========================================
+    // 6. 裝飾元素：粒子背景光點（可選）
+    //    使用 app.ticker 驅動動畫，不依賴 requestAnimationFrame
+    // ==========================================
+
+    /**
+     * 建立若干靜態光點作為背景裝飾，增加視覺層次感。
+     * 使用 PIXI.Graphics 繪製圓點，並存入陣列管理。
+     */
+    const dots = [];
+    const DOT_COUNT = 40;
+
+    for (let i = 0; i < DOT_COUNT; i++) {
+        const dot = new PIXI.Graphics();
+        const radius = Math.random() * 2 + 0.5;
+        const alpha  = Math.random() * 0.5 + 0.1;
+        const colorVal = Math.random() > 0.5 ? 0x66fcf1 : 0xb026ff;
+
+        dot.circle(0, 0, radius).fill({ color: colorVal, alpha });
+        dot.x = Math.random() * 800;
+        dot.y = Math.random() * 600;
+
+        // 賦予每個光點隨機速度（用於緩慢漂移動畫）
+        dot._vx = (Math.random() - 0.5) * 0.3;
+        dot._vy = (Math.random() - 0.5) * 0.3;
+
+        /**
+         * ★ app.stage.addChildAt(child, index)
+         *    將光點插入到舞台的「最底層」（index=0），
+         *    確保它們永遠在幾何圖形後面渲染。
+         */
+        app.stage.addChildAt(dot, 0);
+        dots.push(dot);
+    }
+
+    /**
+     * ★ app.ticker 是 PixiJS 的內建遊戲迴圈驅動器，
+     *    每幀自動呼叫已註冊的回呼函式，
+     *    比手動 requestAnimationFrame 更安全（會隨 app.stop() 一起暫停）。
+     *
+     *    ticker.add(callback) ─ 回呼接收 Ticker 物件，可用 ticker.deltaTime 取得幀間隔。
+     */
+    app.ticker.add((ticker) => {
+        dots.forEach(dot => {
+            dot.x += dot._vx;
+            dot.y += dot._vy;
+
+            // 超出邊界時從對側重新進入（無縫循環）
+            if (dot.x < 0)   dot.x = 800;
+            if (dot.x > 800) dot.x = 0;
+            if (dot.y < 0)   dot.y = 600;
+            if (dot.y > 600) dot.y = 0;
+        });
+
+        // 讓星形緩慢自轉（以弧度為單位，ticker.deltaMS 為自然時間軸）
+        star.rotation += 0.005 * ticker.deltaTime;
+    });
+
+
+    // ==========================================
+    // 7. 狀態資訊 HUD（除錯用）
+    // ==========================================
+    const infoEl = document.getElementById('info');
+
+    app.ticker.add(() => {
+        const s = drag.target;
+        if (s) {
+            infoEl.textContent = `[拖曳中] x: ${Math.round(s.x)} | y: ${Math.round(s.y)}`;
+        } else {
+            infoEl.textContent = 'PixiJS v8 ─ 向量幾何互動測試台';
+        }
+    });
+
+    console.log('[PixiJS Demo] 初始化完成 ✓');
+    console.log('[PixiJS Demo] Renderer 類型:', app.renderer.type === 1 ? 'WebGL' : 'WebGPU/Canvas');
+
+})();
+</script>
+</body>
+</html>
